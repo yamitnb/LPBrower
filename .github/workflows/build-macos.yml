@@ -51,10 +51,10 @@ jobs:
             echo "suffix=arm64" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up Node 22
+      - name: Set up Node 24
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -76,10 +76,22 @@ jobs:
           restore-keys: |
             lpbrower-macos-${{ steps.target.outputs.suffix }}-
 
-      - name: Install npm dependencies (ui-kit + app)
+      - name: Install npm dependencies (app + ui-kit)
+        shell: bash
         run: |
-          npm --prefix ui-kit ci
           npm ci
+          npm --prefix ui-kit ci
+          node -e '
+            const fs = require("fs");
+            for (const p of ["ui-kit/node_modules/estree-walker/package.json", "node_modules/estree-walker/package.json"]) {
+              if (!fs.existsSync(p)) continue;
+              const j = JSON.parse(fs.readFileSync(p, "utf8"));
+              if (j.exports && !j.exports["."] && (j.exports.require || j.exports.import)) {
+                j.exports = { ".": { default: j.main || j.exports.require, ...j.exports }, "./package.json": "./package.json" };
+                fs.writeFileSync(p, JSON.stringify(j, null, 2));
+              }
+            }
+          '
 
       - name: Build Tauri macOS bundle
         shell: bash
