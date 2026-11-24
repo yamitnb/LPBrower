@@ -1,0 +1,136 @@
+# One-click GitHub Actions workflow to build LPBrower Launcher for macOS (.dmg + .app.tar.gz)
+# using GitHub's free Apple Silicon (`macos-15`) hosted runner.
+#
+# How to use:
+#   1. Push this repository to GitHub (public or private).
+#   2. Open the "Actions" tab -> select "Build LPBrower macOS" -> click "Run workflow".
+#   3. Download `LPBrower-macOS-arm64` (or universal) from the workflow run's Artifacts section.
+
+name: Build LPBrower macOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: 'Target architecture (arm64 = Apple Silicon M1/M2/M3/M4, universal = Apple Silicon + Intel)'
+        required: false
+        default: 'arm64'
+        type: choice
+        options:
+          - arm64
+          - universal
+  push:
+    branches:
+      - main
+      - build-macos
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    runs-on: macos-15
+    name: Build LPBrower macOS (${{ inputs.arch || 'arm64' }})
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve Rust target
+        id: target
+        shell: bash
+        run: |
+          ARCH="${{ inputs.arch || 'arm64' }}"
+          if [ "$ARCH" = "universal" ]; then
+            echo "rust_targets=aarch64-apple-darwin,x86_64-apple-darwin" >> "$GITHUB_OUTPUT"
+            echo "tauri_target=universal-apple-darwin" >> "$GITHUB_OUTPUT"
+            echo "suffix=universal" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust_targets=aarch64-apple-darwin" >> "$GITHUB_OUTPUT"
+            echo "tauri_target=aarch64-apple-darwin" >> "$GITHUB_OUTPUT"
+            echo "suffix=arm64" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            ui-kit/package-lock.json
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ steps.target.outputs.rust_targets }}
+
+      - name: Cache Cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: lpbrower-macos-${{ steps.target.outputs.suffix }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            lpbrower-macos-${{ steps.target.outputs.suffix }}-
+
+      - name: Install npm dependencies (ui-kit + app)
+        run: |
+          npm --prefix ui-kit ci
+          npm ci
+
+      - name: Build Tauri macOS bundle
+        shell: bash
+        run: npx tauri build --target ${{ steps.target.outputs.tauri_target }}
+
+      - name: Ad-hoc sign .app and package clean .dmg + .app.tar.gz
+        shell: bash
+        env:
+          COPYFILE_DISABLE: 1
+        run: |
+          set -euo pipefail
+          TARGET="${{ steps.target.outputs.tauri_target }}"
+          SUFFIX="${{ steps.target.outputs.suffix }}"
+          BUNDLE_DIR="src-tauri/target/${TARGET}/release/bundle"
+
+          APP_PATH=$(find "${BUNDLE_DIR}/macos" -maxdepth 1 -name '*.app' -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::Could not find built .app under ${BUNDLE_DIR}/macos"
+            exit 1
+          fi
+
+          # Ensure ad-hoc code signature is valid for Apple Silicon (M1/M2/M3/M4)
+          xattr -cr "$APP_PATH" || true
+          codesign --force --deep --sign - "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+          mkdir -p dist-macos
+
+          # Rebuild a clean .dmg containing the freshly ad-hoc-signed .app + /Applications link
+          STAGE_DMG=$(mktemp -d)
+          cp -R "$APP_PATH" "$STAGE_DMG/"
+          ln -s /Applications "$STAGE_DMG/Applications"
+          hdiutil create \
+            -volname "LPBrower Launcher" \
+            -srcfolder "$STAGE_DMG" \
+            -ov \
+            -format UDZO \
+            "dist-macos/LPBrower_Setup_macOS_${SUFFIX}.dmg"
+          rm -rf "$STAGE_DMG"
+
+          # Also archive the .app directly for quick extraction
+          APP_DIR=$(dirname "$APP_PATH")
+          APP_BASE=$(basename "$APP_PATH")
+          tar -czf "dist-macos/LPBrower_Launcher_macOS_${SUFFIX}.app.tar.gz" -C "$APP_DIR" "$APP_BASE"
+
+          ls -lh dist-macos/
+
+      - name: Upload macOS installers (.dmg + .app.tar.gz)
+        uses: actions/upload-artifact@v4
+        with:
+          name: LPBrower-macOS-${{ steps.target.outputs.suffix }}
+          path: dist-macos/*
+          if-no-files-found: error
+          retention-days: 30
