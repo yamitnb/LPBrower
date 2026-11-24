@@ -69,6 +69,7 @@ cp -R "$APP_PATH" "$STAGE_DMG/"
 ln -s /Applications "$STAGE_DMG/Applications"
 DMG_OUT="dist-desktop/LPBrower_Setup_macOS_${SUFFIX}.dmg"
 hdiutil create \
+  -size 250m \
   -volname "LPBrower Launcher" \
   -srcfolder "$STAGE_DMG" \
   -ov \

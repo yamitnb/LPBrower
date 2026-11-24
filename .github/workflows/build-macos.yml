@@ -121,10 +121,12 @@ jobs:
           mkdir -p dist-macos
 
           # Rebuild a clean .dmg containing the freshly ad-hoc-signed .app + /Applications link
+          # (-size 250m avoids macOS hdiutil's tight -srcfolder volume estimation; UDZO strips unused space)
           STAGE_DMG=$(mktemp -d)
           cp -R "$APP_PATH" "$STAGE_DMG/"
           ln -s /Applications "$STAGE_DMG/Applications"
           hdiutil create \
+            -size 250m \
             -volname "LPBrower Launcher" \
             -srcfolder "$STAGE_DMG" \
             -ov \
