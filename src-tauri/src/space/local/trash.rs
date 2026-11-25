@@ -230,6 +230,7 @@ pub(in crate::space) fn restore(id: &str) -> Result<profile::ProfileMeta> {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string(),
+        taskbar_title: stored.meta.taskbar_title.clone().unwrap_or_default(),
         proxy_id: stored.meta.proxy_id.clone(),
         last_launched_at: stored.meta.last_launched_at.clone(),
         created_at: stored.meta.created_at.clone(),

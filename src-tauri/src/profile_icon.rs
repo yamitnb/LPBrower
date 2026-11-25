@@ -161,7 +161,7 @@ fn layout<'a>(
     let words: Vec<&str> = name.split_whitespace().collect();
     let words = if words.is_empty() { vec![name] } else { words };
 
-    let mut px = SIZE * 0.21;
+    let mut px = SIZE * 0.25;
     while px > 14.0 {
         let scaled = font.as_scaled(PxScale::from(px));
         let width = |s: &str| -> f32 {
@@ -258,16 +258,12 @@ fn draw_text(
     }
 }
 
-/// Composes the icon for `name` in `color` (None = derived from the name) and
-/// returns the PNG path, reusing the cached file when neither has changed.
-pub fn ensure_icon(cache_dir: &Path, name: &str, color: Option<&str>) -> Result<PathBuf> {
-    // The drawing is part of the key, not just the name and the colour. The
-    // folder outlives updates, so when the mark or the layout changes an
-    // existing profile would otherwise keep showing the icon drawn by the
-    // version before — until somebody renamed it.
-    // Key includes layout version ("chromium-v2") so cached old square-card icons regenerate cleanly.
+/// Compute deterministic cache key hash for `(taskbar_title, profile_name, color)`.
+fn icon_hash(taskbar_title: &str, profile_name: &str, color: Option<&str>) -> u64 {
+    let badge = taskbar_title.trim();
     let key = format!(
-        "chromium-v2\u{1}{name}\u{1}{}\u{1}{}\u{1}{}",
+        "chromium-v3\u{1}{badge}\u{1}{}\u{1}{}\u{1}{}\u{1}{}",
+        if badge.is_empty() { "" } else { profile_name },
         color.unwrap_or(""),
         env!("CARGO_PKG_VERSION"),
         MARK.len()
@@ -277,42 +273,52 @@ pub fn ensure_icon(cache_dir: &Path, name: &str, color: Option<&str>) -> Result<
         h ^= *b as u64;
         h = h.wrapping_mul(1099511628211);
     }
-    let dir = cache_dir.join("profile-icons");
-    std::fs::create_dir_all(&dir).ok();
-    let out = dir.join(format!("{h:016x}.png"));
-    if out.exists() {
-        return Ok(out);
-    }
+    h
+}
 
+/// Render the 512x512 RGBA premultiplied pixmap for a profile's browser icon.
+/// When `taskbar_title` is non-empty, draws a bold high-contrast pill badge at the bottom
+/// so the label is immediately readable on the Windows taskbar, Dock, and Desktop shortcuts.
+/// When `taskbar_title` is empty, renders the clean Chromium-LP browser icon without a text pill.
+fn render_icon_pixmap(
+    taskbar_title: &str,
+    profile_name: &str,
+    color: Option<&str>,
+) -> Result<Pixmap> {
     let s = SIZE as u32;
     let mut pix = Pixmap::new(s, s).context("allocate pixmap")?;
     let cx = SIZE / 2.0;
+    let badge = taskbar_title.trim();
 
-    // 1. Draw the Chromium-core LP browser icon filling the taskbar canvas.
-    //    Slightly lifted upward so the bottom profile pill sits harmoniously over the lower rim.
-    draw_mark(&mut pix, cx, SIZE * 0.45, SIZE * 0.86);
+    if badge.is_empty() {
+        draw_mark(&mut pix, cx, cx, SIZE * 0.92);
+        return Ok(pix);
+    }
 
-    // 2. Draw a crisp profile-accent pill badge along the bottom edge so multiple open
-    //    profiles remain instantly distinguishable on the Windows taskbar and Alt-Tab.
-    let label = name.strip_prefix("LPB|").unwrap_or(name).trim();
-    let label = if label.is_empty() { name } else { label };
-    let tint = color.and_then(parse_hex).unwrap_or_else(|| accent(label));
+    // 1. Draw the Chromium-core LP browser icon filling the taskbar canvas,
+    //    slightly lifted upward so the bottom Taskbar Title pill sits cleanly.
+    draw_mark(&mut pix, cx, SIZE * 0.43, SIZE * 0.84);
 
-    let badge_h = SIZE * 0.27;
-    let badge_w = SIZE * 0.90;
+    // 2. Draw a crisp profile-accent pill badge with the Taskbar Title along the bottom edge.
+    let accent_seed = profile_name.strip_prefix("LPB|").unwrap_or(profile_name).trim();
+    let accent_seed = if accent_seed.is_empty() { badge } else { accent_seed };
+    let tint = color.and_then(parse_hex).unwrap_or_else(|| accent(accent_seed));
+
+    let badge_h = SIZE * 0.33;
+    let badge_w = SIZE * 0.94;
     let bx0 = cx - badge_w / 2.0;
-    let by0 = SIZE - badge_h - SIZE * 0.03;
+    let by0 = SIZE - badge_h - SIZE * 0.02;
     let bx1 = bx0 + badge_w;
     let by1 = by0 + badge_h;
-    let badge_r = badge_h * 0.42;
+    let badge_r = badge_h * 0.44;
 
     if let Some(pill) = rounded_rect(bx0, by0, bx1, by1, badge_r) {
         let mut paint = Paint::default();
         paint.anti_alias = true;
 
         // Crisp white outer halo stroke so the pill separates cleanly from the Chromium wheel.
-        paint.set_color(Color::from_rgba8(255, 255, 255, 245));
-        let stroke = tiny_skia::Stroke { width: SIZE * 0.032, ..Default::default() };
+        paint.set_color(Color::from_rgba8(255, 255, 255, 248));
+        let stroke = tiny_skia::Stroke { width: SIZE * 0.034, ..Default::default() };
         pix.stroke_path(&pill, &paint, &stroke, Transform::identity(), None);
 
         // Filled pill in the profile's accent colour.
@@ -321,13 +327,165 @@ pub fn ensure_icon(cache_dir: &Path, name: &str, color: Option<&str>) -> Result<
     }
 
     let font = FontRef::try_from_slice(FONT).context("load font")?;
-    let (px, lines) = layout(&font, label, badge_w * 0.84, badge_h * 0.78, 1);
+    let (px, lines) = layout(&font, badge, badge_w * 0.86, badge_h * 0.80, 1);
     let block_h = lines.len() as f32 * px * 1.05;
     let text_top = by0 + (badge_h - block_h) / 2.0 - px * 0.04;
     let ink = if luminance(tint) > 0.62 { (20, 24, 32) } else { (255, 255, 255) };
     draw_text(&mut pix, &font, &lines, px, cx, text_top, ink);
 
+    Ok(pix)
+}
+
+/// Progressive box/bicubic downscale of a square `Pixmap` to `target_size` for crisp small icons.
+fn downscale_pixmap(src: &Pixmap, target_size: u32) -> Result<Pixmap> {
+    let mut cur: Option<Pixmap> = None;
+    let mut cur_ref: &Pixmap = src;
+    let paint = tiny_skia::PixmapPaint {
+        quality: tiny_skia::FilterQuality::Bicubic,
+        ..Default::default()
+    };
+    while cur_ref.width() / 2 >= target_size && cur_ref.width() > target_size {
+        let next_sz = cur_ref.width() / 2;
+        let mut next = Pixmap::new(next_sz, next_sz).context("allocate downscale step")?;
+        let scale = next_sz as f32 / cur_ref.width() as f32;
+        next.draw_pixmap(0, 0, cur_ref.as_ref(), &paint, Transform::from_scale(scale, scale), None);
+        cur = Some(next);
+        cur_ref = cur.as_ref().unwrap();
+    }
+    if cur_ref.width() == target_size {
+        return Ok(cur.unwrap_or_else(|| src.clone()));
+    }
+    let mut out = Pixmap::new(target_size, target_size).context("allocate target icon pixmap")?;
+    let scale = target_size as f32 / cur_ref.width() as f32;
+    out.draw_pixmap(0, 0, cur_ref.as_ref(), &paint, Transform::from_scale(scale, scale), None);
+    Ok(out)
+}
+
+/// Encode a `Pixmap` (< 256 px) as a 32-bit BGRA `BITMAPINFOHEADER` DIB + 1bpp AND mask for `.ico`.
+fn encode_ico_dib(pix: &Pixmap) -> Vec<u8> {
+    let w = pix.width();
+    let h = pix.height();
+    let xor_bytes = (w * h * 4) as usize;
+    let and_row_bytes = (((w + 31) / 32) * 4) as usize;
+    let and_bytes = and_row_bytes * (h as usize);
+    let mut out = Vec::with_capacity(40 + xor_bytes + and_bytes);
+
+    // BITMAPINFOHEADER (40 bytes)
+    out.extend_from_slice(&40u32.to_le_bytes());
+    out.extend_from_slice(&(w as i32).to_le_bytes());
+    out.extend_from_slice(&((h * 2) as i32).to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes()); // planes
+    out.extend_from_slice(&32u16.to_le_bytes()); // bpp
+    out.extend_from_slice(&0u32.to_le_bytes()); // BI_RGB
+    out.extend_from_slice(&((xor_bytes + and_bytes) as u32).to_le_bytes());
+    out.extend_from_slice(&[0u8; 16]);
+
+    let src = pix.data();
+    // Bottom-up BGRA XOR mask (unpremultiplied from tiny_skia's premultiplied RGBA)
+    for y in (0..h).rev() {
+        for x in 0..w {
+            let idx = ((y * w + x) * 4) as usize;
+            let (pr, pg, pb, a) = (src[idx], src[idx + 1], src[idx + 2], src[idx + 3]);
+            let (r, g, b) = if a == 0 {
+                (0, 0, 0)
+            } else if a == 255 {
+                (pr, pg, pb)
+            } else {
+                let un = |c: u8| (((c as u32) * 255 + (a as u32 / 2)) / (a as u32)).min(255) as u8;
+                (un(pr), un(pg), un(pb))
+            };
+            out.extend_from_slice(&[b, g, r, a]);
+        }
+    }
+
+    // Bottom-up 1bpp AND mask (1 = fully transparent pixel)
+    for y in (0..h).rev() {
+        let mut row = vec![0u8; and_row_bytes];
+        for x in 0..w {
+            let a = src[((y * w + x) * 4 + 3) as usize];
+            if a == 0 {
+                row[(x / 8) as usize] |= 1 << (7 - (x % 8));
+            }
+        }
+        out.extend_from_slice(&row);
+    }
+
+    out
+}
+
+/// Composes the 512x512 PNG icon for `(taskbar_title, profile_name, color)` and returns its path.
+pub fn ensure_icon(
+    cache_dir: &Path,
+    taskbar_title: &str,
+    profile_name: &str,
+    color: Option<&str>,
+) -> Result<PathBuf> {
+    let h = icon_hash(taskbar_title, profile_name, color);
+    let dir = cache_dir.join("profile-icons");
+    std::fs::create_dir_all(&dir).ok();
+    let out = dir.join(format!("{h:016x}.png"));
+    if out.exists() {
+        return Ok(out);
+    }
+    let pix = render_icon_pixmap(taskbar_title, profile_name, color)?;
     pix.save_png(&out).context("write icon png")?;
+    Ok(out)
+}
+
+/// Composes a multi-resolution Windows `.ico` (`256, 64, 48, 32, 16`) for Desktop shortcuts
+/// and returns its cached `.ico` path.
+pub fn ensure_ico(
+    cache_dir: &Path,
+    taskbar_title: &str,
+    profile_name: &str,
+    color: Option<&str>,
+) -> Result<PathBuf> {
+    let h = icon_hash(taskbar_title, profile_name, color);
+    let dir = cache_dir.join("profile-icons");
+    std::fs::create_dir_all(&dir).context("create profile-icons dir")?;
+    let out = dir.join(format!("{h:016x}.ico"));
+    if out.exists() {
+        return Ok(out);
+    }
+
+    let master = render_icon_pixmap(taskbar_title, profile_name, color)?;
+    let sizes: [u32; 5] = [256, 64, 48, 32, 16];
+    let mut payloads: Vec<(u32, Vec<u8>)> = Vec::with_capacity(sizes.len());
+    for sz in sizes {
+        let scaled = downscale_pixmap(&master, sz)?;
+        let bytes = if sz >= 256 {
+            scaled.encode_png().context("encode 256px ico png")?
+        } else {
+            encode_ico_dib(&scaled)
+        };
+        payloads.push((sz, bytes));
+    }
+
+    let count = payloads.len();
+    let mut ico = Vec::new();
+    // ICONDIR header (6 bytes)
+    ico.extend_from_slice(&0u16.to_le_bytes());
+    ico.extend_from_slice(&1u16.to_le_bytes());
+    ico.extend_from_slice(&(count as u16).to_le_bytes());
+
+    let mut offset = (6 + 16 * count) as u32;
+    for (sz, bytes) in &payloads {
+        let dim = if *sz >= 256 { 0u8 } else { *sz as u8 };
+        ico.push(dim);
+        ico.push(dim);
+        ico.push(0); // palette
+        ico.push(0); // reserved
+        ico.extend_from_slice(&1u16.to_le_bytes()); // planes
+        ico.extend_from_slice(&32u16.to_le_bytes()); // bpp
+        ico.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+        ico.extend_from_slice(&offset.to_le_bytes());
+        offset += bytes.len() as u32;
+    }
+    for (_, bytes) in payloads {
+        ico.extend_from_slice(&bytes);
+    }
+
+    std::fs::write(&out, ico).context("write icon ico")?;
     Ok(out)
 }
 

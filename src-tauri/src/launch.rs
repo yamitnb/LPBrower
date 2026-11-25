@@ -578,6 +578,8 @@ pub(crate) async fn launch_with(engine: PathBuf, profile_id: &str, enable_cdp: b
 struct Ready<'a> {
     fp_file: &'a Path,
     icon: Option<&'a Path>,
+    /// Custom window/taskbar title (`--window-name`), when configured on the profile.
+    taskbar_title: Option<&'a str>,
     /// The profile as the engine reads it: no `_meta`, "auto" resolved.
     raw: &'a serde_json::Map<String, serde_json::Value>,
     proxy_udp_ok: bool,
@@ -641,6 +643,15 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
         .color
         .clone()
         .filter(|c| !c.trim().is_empty());
+    let taskbar_title_for_launch = input
+        .stored
+        .meta
+        .taskbar_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+    let taskbar_title_for_prep = taskbar_title_for_launch.clone();
     let display_name_for_icon = {
         let name = input
             .stored
@@ -675,7 +686,12 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
             if cfg!(test) {
                 anyhow::bail!("no icons in tests");
             }
-            crate::profile_icon::ensure_icon(&dir, &display_name_for_icon, color_for_prep.as_deref())
+            crate::profile_icon::ensure_icon(
+                &dir,
+                taskbar_title_for_prep.as_deref().unwrap_or(""),
+                &display_name_for_icon,
+                color_for_prep.as_deref(),
+            )
         }) {
             Ok(path) => Some(path),
             Err(e) => {
@@ -806,6 +822,7 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
         &Ready {
             fp_file: &fp_file,
             icon: icon.as_deref(),
+            taskbar_title: taskbar_title_for_launch.as_deref(),
             raw: &raw,
             proxy_udp_ok,
             proxy_public_ip: proxy_public_ip.as_deref(),
@@ -921,6 +938,9 @@ fn command_line(
     args.push(format!("--user-data-dir={}", input.udd.display()));
     if let Some(icon) = ready.icon {
         args.push(format!("--shardx-profile-icon={}", icon.display()));
+    }
+    if let Some(tt) = ready.taskbar_title.map(str::trim).filter(|s| !s.is_empty()) {
+        args.push(format!("--window-name={tt}"));
     }
     // Turned off in Settings, no name in the omnibox or the window title (#126). Otherwise
     // the same accent behind the omnibox pill, so the icon and the window never disagree
@@ -1766,6 +1786,13 @@ mod tests {
         let ready = Ready {
             fp_file: &fp,
             icon: Some(&icon),
+            taskbar_title: input
+                .stored
+                .meta
+                .taskbar_title
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty()),
             raw: &raw,
             proxy_udp_ok: false,
             proxy_public_ip: None,
@@ -1807,6 +1834,16 @@ mod tests {
                 "--shardx-camera",
             ]
         );
+    }
+
+    #[test]
+    fn a_profile_with_taskbar_title_sets_window_name() {
+        let p = input(
+            json!({ "_meta": { "id": "p-tt", "rev": 1, "taskbar_title": "Shop-01" }, "name": "Main Shop" }),
+            None,
+        );
+        let args = argv(&p, &UI, &settings());
+        assert!(args.contains(&"--window-name=Shop-01".to_string()), "{args:?}");
     }
 
     /// #126: off in Settings, the engine is told to show no name, and the pill colour goes too.

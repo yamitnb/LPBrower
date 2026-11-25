@@ -1,6 +1,7 @@
 // ShardBrowser Launcher — Tauri backend.
 
 mod profile_icon;
+mod shortcut;
 mod brand_engine;
 mod proxy_tunnel;
 mod platform_version;
@@ -1719,6 +1720,14 @@ fn launch_cancel(profile_id: String) {
 }
 
 #[tauri::command]
+async fn profile_create_shortcut(id: String) -> Result<String, String> {
+    shortcut::create_desktop_shortcut(&id)
+        .await
+        .map(|p| p.display().to_string())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn launch(profile_id: String, password: Option<String>) -> Result<u32, String> {
     // UI launches: no CDP, headed. The bus goes along even with no group so the
     // page helper has somewhere to report.
@@ -2000,7 +2009,7 @@ fn open_helper_panel(app: &tauri::AppHandle, profile: &str) {
     }
     let url = format!("index.html#/?helperPanel={profile}");
     if let Err(e) = WebviewWindowBuilder::new(app, "helper-panel", WebviewUrl::App(url.into()))
-        .title("Shard Helper")
+        .title("LPBrower Helper")
         .inner_size(300.0, 150.0)
         .resizable(false)
         .always_on_top(true)
@@ -2717,6 +2726,47 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
+/// Launch (or focus) a profile triggered from an OS Desktop shortcut (`--launch-profile <id>`).
+fn launch_from_shortcut(app: tauri::AppHandle, profile_id: String, cold_start: bool) {
+    tauri::async_runtime::spawn(async move {
+        space::ready().await;
+        if process::Tracker::shared().is_running(&profile_id) {
+            if let Ok(b) = bus().await {
+                let _ = b.focus(&profile_id);
+            }
+            return;
+        }
+        if space::profile::is_protected(&profile_id) {
+            use tauri::{Emitter, Manager};
+            show_main_window(&app);
+            if cold_start {
+                tokio::time::sleep(std::time::Duration::from_millis(900)).await;
+            }
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.emit("shortcut-launch-protected", profile_id);
+            }
+            return;
+        }
+        let b = match bus().await {
+            Ok(b) => b,
+            Err(e) => {
+                show_main_window(&app);
+                notify_warning(e);
+                return;
+            }
+        };
+        match launch::launch_profile_unlocked(&profile_id, false, false, b.port, &b.token, None).await {
+            Ok(_) => {
+                notify_store_changed("profiles");
+            }
+            Err(e) => {
+                show_main_window(&app);
+                notify_warning(format!("Không thể mở hồ sơ từ shortcut: {e}"));
+            }
+        }
+    });
+}
+
 /// Run as the reaper when the command line says `--reap`; its exit code then.
 pub fn reap_if_asked() -> Option<i32> {
     space::reap::from_args(std::env::args_os())
@@ -2724,9 +2774,14 @@ pub fn reap_if_asked() -> Option<i32> {
 
 pub fn run() {
     with_app_menu(tauri::Builder::default())
-        // Must be the first plugin: a second launch focuses the running window.
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            show_main_window(app);
+        // Must be the first plugin: a second launch focuses the running window,
+        // or directly starts/focuses a profile when invoked from a Desktop shortcut.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(profile_id) = shortcut::extract_launch_profile_arg(&argv) {
+                launch_from_shortcut(app.clone(), profile_id, false);
+            } else {
+                show_main_window(app);
+            }
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -2779,6 +2834,7 @@ pub fn run() {
             profile_unlock,
             profile_save,
             profile_delete,
+            profile_create_shortcut,
             automation_available,
             automation_list,
             automation_create,
@@ -3022,6 +3078,22 @@ pub fn run() {
                 return Ok(());
             }
 
+            // If started cold from a Desktop profile shortcut (`--launch-profile <id>`),
+            // keep the management window tucked in the system tray (unless password-locked)
+            // and launch the requested profile browser immediately.
+            let startup_shortcut_profile = {
+                let args: Vec<String> = std::env::args().collect();
+                shortcut::extract_launch_profile_arg(&args)
+            };
+            if let Some(ref pid) = startup_shortcut_profile {
+                if !space::profile::is_protected(pid) {
+                    use tauri::Manager;
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.hide();
+                    }
+                }
+            }
+
             // Run startup housekeeping and browser launch warm-up in background
             // threads so the main window opens immediately and the first
             // browser launch hits warm caches (engine caps, icon decoder,
@@ -3092,6 +3164,9 @@ pub fn run() {
                 }
                 Ok(_) => eprintln!("[launcher] automation API disabled in settings"),
                 Err(e) => eprintln!("[launcher] API secret init failed: {e}"),
+            }
+            if let Some(pid) = startup_shortcut_profile {
+                launch_from_shortcut(app.handle().clone(), pid, true);
             }
             Ok(())
         })

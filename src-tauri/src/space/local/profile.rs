@@ -57,6 +57,8 @@ pub struct ProfileMeta {
     pub id: String,
     pub name: String,
     pub notes: String,
+    #[serde(default)]
+    pub taskbar_title: String,
     pub proxy_id: Option<String>,
     pub last_launched_at: Option<String>,
     pub created_at: Option<String>,
@@ -163,6 +165,9 @@ pub struct StoredMeta {
     /// Icon accent, `#rrggbb`; absent = derived from the name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// Custom label/badge shown on the OS taskbar for this profile's browser.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub taskbar_title: Option<String>,
     /// Extension ids from the library.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extensions: Vec<String>,
@@ -332,6 +337,7 @@ pub(in crate::space) fn list_all() -> Result<Vec<ProfileMeta>> {
             id: stored.meta.id,
             name,
             notes,
+            taskbar_title: stored.meta.taskbar_title.clone().unwrap_or_default(),
             proxy_id: stored.meta.proxy_id,
             last_launched_at: stored.meta.last_launched_at,
             created_at: stored.meta.created_at,
@@ -679,6 +685,7 @@ pub(in crate::space) fn clone_profile(id: &str) -> Result<ProfileMeta> {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string(),
+        taskbar_title: src.meta.taskbar_title.clone().unwrap_or_default(),
         proxy_id: src.meta.proxy_id,
         last_launched_at: None,
         created_at: src.meta.created_at,

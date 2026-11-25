@@ -1,18 +1,18 @@
 import { t } from "../../shared/i18n";
 import {
-  AddIcon, ChangePasswordIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, CopyIcon, DeleteIcon, DownloadIcon, EditIcon, FolderIcon, FolderMinusIconApp, IdCardIcon,
+  AddIcon, ChangePasswordIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, ComputerIcon, CopyIcon, DeleteIcon, DownloadIcon, EditIcon, FolderIcon, FolderMinusIconApp, IdCardIcon,
   PasswordIcon, PeekIcon, PinIconApp, PlayIcon, RegenerateIcon, RemovePasswordIcon, RenameIcon, RouteIcon, StopIcon, SyncIcon, SyncedIcon, SyncOffIcon, TagIcon,
   UnpinIconApp, UploadIcon,
 } from "../../shared/icons";
 import { syncConnected, useSync } from "../../entities/sync";
 import { openHereInstead, setProfilesSync } from "../profile-sync";
-import { processList, profileFocusWindow } from "../../entities/profile";
+import { processList, profileCreateShortcut, profileFocusWindow } from "../../entities/profile";
 import { clip } from "../../shared/lib/clipboard";
 import { toast } from "../../shared/model/toast";
 import { useNav } from "../../shared/model/navigation";
 import { defineCommands, type Command, type RunFrom, type Subject } from "../../shared/commands";
 import {
-  cloneRefusal, findView, folderNamesOf, isProtected, isTeamRow, lockedRefusal, moveRefusal, profileRefusal, resolveId, selectVisible, setContinueByHand, startRefusal, syncBlockReason,
+  cloneRefusal, findView, folderNamesOf, isPlaceholder, isProtected, isTeamRow, lockedRefusal, moveRefusal, profileRefusal, resolveId, selectVisible, setContinueByHand, startRefusal, syncBlockReason,
   useOverviewFolds, useProfile, useProfileUi, viewFolds, type ProfileMeta, type ProfileRight,
 } from "../../entities/profile";
 import { createAnywhereRefusal, inTeam } from "../../entities/space";
@@ -252,6 +252,49 @@ export const PROFILE_COMMANDS: readonly Command[] = [
     // The copy is a new profile in the same folder; a protected one is not copied.
     disabled: (s) => noneMay(metas(s), (p) => cloneRefusal(p) ?? lockedRefusal(p)),
     run: (s) => data().cloneProfile(s.ids[0]),
+  },
+  {
+    ...LIST, id: "profile.createShortcut", scope: "selection", group: "open", icon: ComputerIcon,
+    label: () => t("commands.createShortcut"),
+    surfaces: ["rowMenu", "pinnedMenu", "peekMenu", "palette", "paletteActions"],
+    disabled: (s) => (s.ids.length > 0 && s.ids.every(isPlaceholder) ? t("commands.alreadyCancelling") : null),
+    run: async (s) => {
+      const rows = metas(s);
+      if (rows.length === 0) return;
+      const failed: string[] = [];
+      let firstErr: unknown = null;
+      let createdCount = 0;
+      let lastName = "";
+      for (const row of rows) {
+        const real = await resolveId(row.id);
+        if (!real) {
+          failed.push(row.id);
+          continue;
+        }
+        try {
+          await profileCreateShortcut(real);
+          createdCount++;
+          lastName = row.name;
+        } catch (e) {
+          failed.push(row.id);
+          firstErr ??= e;
+        }
+      }
+      if (createdCount > 0) {
+        toast.ok(
+          createdCount === 1
+            ? t("commands.shortcutCreatedOne", { name: lastName })
+            : t("commands.shortcutCreatedMany", { n: createdCount }),
+        );
+      }
+      if (failed.length > 0) {
+        toast.fail({
+          title: t("commands.shortcutFailed"),
+          detail: firstErr,
+        });
+      }
+      return failed;
+    },
   },
   {
     ...LIST, id: "profile.pin", scope: "active", group: "open", icon: PinIconApp,

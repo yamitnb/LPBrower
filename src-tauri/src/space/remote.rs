@@ -146,6 +146,7 @@ pub fn meta(team: &str, row: &ProfileRow, detail: Option<&StoredProfile>, device
         id: row.id.clone(),
         name: row.name.clone(),
         notes: row.card.notes.clone(),
+        taskbar_title: detail.and_then(|d| d.meta.taskbar_title.clone()).unwrap_or_default(),
         proxy_id: row.card.bound_proxy().map(str::to_owned),
         // Last launched is the lease: no count is kept for a team's profile.
         last_launched_at: row.open_on.as_ref().map(|l| format!("@{}", l.acquired_at)),

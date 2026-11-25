@@ -13,7 +13,7 @@ import { PASSWORD_MIN, passwordProblem, useProfile } from "../../../entities/pro
 import { useProfilePasswords } from "../../../entities/settings";
 import { HOST_OS } from "../../../shared/lib/utils";
 import { osIdFor } from "../../../shared/constants";
-import { ColorRow, CookiesRow, NotesRow } from "./fields";
+import { ColorRow, CookiesRow, NotesRow, TaskbarTitleRow } from "./fields";
 import { teamRefusal, useInTeam, useRightsChange } from "../../../entities/space";
 import { TagsField } from "./TagsField";
 import { ProxyTab } from "./ProxyTab";
@@ -104,16 +104,21 @@ export function BasicsTab({ draft }: { draft: ProfileFormDraft }) {
       {/* Section 2: Proxy & Network */}
       <ProxyTab draft={draft} />
 
-      {/* Section 3: Metadata (Tags, Color, Notes, Cookies) */}
+      {/* Section 3: Metadata (Taskbar Title, Tags, Color, Notes, Cookies) */}
       <section className="flex flex-col gap-2 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-3.5">
         <div className="flex items-center gap-2 pb-1.5 border-b border-stroke-soft-200/70">
           <TagIcon className="size-3.5 text-primary-base" />
           <h3 className="m-0 text-xs font-semibold text-text-strong-950">
-            Phân loại, Ghi chú &amp; Cookies
+            Taskbar Title, Phân loại &amp; Ghi chú
           </h3>
         </div>
         <PropertySheet>
           <div className="flex flex-col gap-[2px]">
+            <TaskbarTitleRow
+              value={f.taskbar_title}
+              color={f.color}
+              onChange={(taskbar_title) => patchForm({ taskbar_title })}
+            />
             <TagsField
               value={draft.tagIds}
               newNames={draft.newTags}

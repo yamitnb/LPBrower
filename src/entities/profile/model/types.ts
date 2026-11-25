@@ -10,6 +10,8 @@ export type ProfileMeta = {
   name: string;
   /** Null while a password locks it (`protected`). */
   notes: string | null;
+  /** Optional custom label/badge displayed for the browser on the OS taskbar. */
+  taskbar_title?: string;
   /** Null for no proxy, and while a password locks it: unknown then. */
   proxy_id: string | null;
   last_launched_at: string | null;
@@ -59,6 +61,7 @@ export type ProfileForm = {
   rev: number;
   name: string;
   notes: string;
+  taskbar_title: string;
   proxy_id: string | null;
   /// "" = derive from the name, which is what the browser does on its own.
   color: string;

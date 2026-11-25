@@ -10,10 +10,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[cfg(target_os = "macos")]
-const MARKER_FILE: &str = ".lpbrower-branded-v5";
-#[cfg(not(target_os = "macos"))]
-const MARKER_FILE: &str = ".lpbrower-branded-v4";
+const MARKER_FILE: &str = ".lpbrower-branded-v6";
 
 #[cfg(windows)]
 const ICO_BYTES: &[u8] = include_bytes!("../icons/browser-icon.ico");
@@ -308,8 +305,8 @@ h2 {
     </section>
 
     <footer class="foot">
-      <a class="link" href="https://github.com/LPBrower/LPBrower">
-        github.com/LPBrower/LPBrower
+      <a class="link" href="https://github.com/yamitnb/LPBrower">
+        github.com/yamitnb/LPBrower
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M9 6.65032C9 6.65032 15.9383 6.10759 16.9154 7.08463C17.8924 8.06167 17.3496 15 17.3496 15M16.5 7.5L6.5 17.5"/>
         </svg>
@@ -336,12 +333,12 @@ pub fn ensure_branded(engine_dir: &Path) {
             return;
         }
         if brand_macos_bundle(&app_bundle) {
-            if fs::write(&marker, "v5\n").is_err() {
+            if fs::write(&marker, "v6\n").is_err() {
                 if let Some(fb) = fallback_marker {
                     if let Some(parent) = fb.parent() {
                         let _ = fs::create_dir_all(parent);
                     }
-                    let _ = fs::write(&fb, "v5\n");
+                    let _ = fs::write(&fb, "v6\n");
                 }
             }
         }
@@ -376,6 +373,11 @@ pub fn ensure_branded(engine_dir: &Path) {
         }
     }
 
+    let nh = engine_dir.join("notification_helper.exe");
+    if nh.is_file() {
+        let _ = patch_notification_helper_strings(&nh);
+    }
+
     #[cfg(windows)]
     {
         for exe_name in ["chrome.exe", "notification_helper.exe"] {
@@ -387,10 +389,19 @@ pub fn ensure_branded(engine_dir: &Path) {
                 }
             }
         }
+        for pe_name in ["chrome.exe", "notification_helper.exe", "chrome_elf.dll", "chrome.dll"] {
+            let p = engine_dir.join(pe_name);
+            if p.is_file() {
+                if let Err(e) = win_res::update_version_info(&p) {
+                    eprintln!("[brand_engine] version info update skipped for {pe_name}: {e}");
+                }
+            }
+        }
+        win_res::scrub_windows_shell_cache();
     }
 
     if all_ok {
-        let _ = fs::write(&marker, "v4\n");
+        let _ = fs::write(&marker, "v6\n");
     }
 }
 
@@ -434,29 +445,15 @@ fn brand_macos_bundle(app_bundle: &Path) -> bool {
     // 1. Update display names in Contents/Info.plist (preserving CFBundleExecutable).
     let info_plist = contents.join("Info.plist");
     if info_plist.is_file() {
-        let _ = patch_plist_display_names(&info_plist);
+        let _ = patch_plist_display_names(&info_plist, false);
     }
 
-    // 2. Replace bundle .icns in Contents/Resources/ with LPBrower's browser icon.
+    // 2. Replace bundle .icns and localized InfoPlist.strings in Contents/Resources/.
     let res_dir = contents.join("Resources");
     if res_dir.is_dir() {
-        let app_icns = res_dir.join("app.icns");
-        if app_icns.is_file() || !has_any_icns(&res_dir) {
-            if let Err(e) = fs::write(&app_icns, ICNS_BYTES) {
-                eprintln!("[brand_engine] macOS app.icns write failed: {e}");
-                all_ok = false;
-            }
-        } else if let Ok(entries) = fs::read_dir(&res_dir) {
-            for ent in entries.flatten() {
-                let p = ent.path();
-                if p.extension().and_then(|e| e.to_str()) == Some("icns") {
-                    if let Err(e) = fs::write(&p, ICNS_BYTES) {
-                        eprintln!("[brand_engine] macOS icns update failed for {}: {e}", p.display());
-                        all_ok = false;
-                    }
-                }
-            }
-        }
+        replace_bundle_icns(&res_dir, &mut all_ok);
+        let _ = fs::remove_file(res_dir.join("Assets.car"));
+        patch_macos_infoplist_strings(&res_dir);
     }
 
     // 3. Patch Chromium Framework resources (*.lproj/locale.pak, scale paks, framework binary, helpers).
@@ -485,6 +482,13 @@ fn brand_macos_bundle(app_bundle: &Path) -> bool {
                     patch_scale_paks(&fw_res);
                     patch_locales(&fw_res);
                     patch_macos_lproj_locales(&fw_res);
+                    patch_macos_infoplist_strings(&fw_res);
+                    for p_name in ["Info.plist", "app_mode-Info.plist"] {
+                        let p = fw_res.join(p_name);
+                        if p.is_file() {
+                            let _ = patch_plist_display_names(&p, false);
+                        }
+                    }
                 }
 
                 // Framework Mach-O binary (e.g. `ShardX Framework`).
@@ -498,15 +502,27 @@ fn brand_macos_bundle(app_bundle: &Path) -> bool {
                     }
                 }
 
-                // Helper app Info.plists (`ShardX Helper.app`, `ShardX Helper (GPU).app`, etc.).
+                // Helper apps (`ShardX Helper (Alerts).app`, `ShardX Helper (GPU).app`, etc.).
+                // Notification Center on macOS reads the sender name & icon directly from
+                // `ShardX Helper (Alerts).app` and `ShardX Helper (Aperitif Alerts).app`!
                 let helpers_dir = ver_path.join("Helpers");
                 if let Ok(helpers) = fs::read_dir(&helpers_dir) {
                     for h_ent in helpers.flatten() {
                         let hp = h_ent.path();
                         if hp.extension().and_then(|e| e.to_str()) == Some("app") {
+                            let is_alerts = hp
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .is_some_and(|n| n.contains("Alert"));
                             let h_plist = hp.join("Contents").join("Info.plist");
                             if h_plist.is_file() {
-                                let _ = patch_plist_display_names(&h_plist);
+                                let _ = patch_plist_display_names(&h_plist, is_alerts);
+                            }
+                            let h_res = hp.join("Contents").join("Resources");
+                            if h_res.is_dir() {
+                                replace_bundle_icns(&h_res, &mut all_ok);
+                                let _ = fs::remove_file(h_res.join("Assets.car"));
+                                patch_macos_infoplist_strings(&h_res);
                             }
                         }
                     }
@@ -567,10 +583,63 @@ fn patch_macos_lproj_locales(resources_dir: &Path) {
     }
 }
 
-/// Update only human-facing display name keys in an Apple XML `Info.plist`,
-/// leaving `CFBundleExecutable` and `CFBundleIdentifier` untouched.
 #[cfg(any(target_os = "macos", test))]
-fn patch_plist_display_names(plist_path: &Path) -> std::io::Result<bool> {
+fn replace_bundle_icns(res_dir: &Path, all_ok: &mut bool) {
+    let app_icns = res_dir.join("app.icns");
+    if app_icns.is_file() || !has_any_icns(res_dir) {
+        if let Err(e) = fs::write(&app_icns, ICNS_BYTES) {
+            eprintln!("[brand_engine] macOS app.icns write failed: {e}");
+            *all_ok = false;
+        }
+    } else if let Ok(entries) = fs::read_dir(res_dir) {
+        for ent in entries.flatten() {
+            let p = ent.path();
+            if p.extension().and_then(|e| e.to_str()) == Some("icns") {
+                if let Err(e) = fs::write(&p, ICNS_BYTES) {
+                    eprintln!("[brand_engine] macOS icns update failed for {}: {e}", p.display());
+                    *all_ok = false;
+                }
+            }
+        }
+    }
+}
+
+/// Patch localized `*.lproj/InfoPlist.strings` (both binary plists in `Alerts` helpers
+/// and UTF-8/UTF-16 `.strings` in main app locales) so macOS Notification Center and
+/// permission dialogs display `"LPBrower"` instead of `"ShardX"`.
+#[cfg(any(target_os = "macos", test))]
+fn patch_macos_infoplist_strings(resources_dir: &Path) {
+    let Ok(entries) = fs::read_dir(resources_dir) else {
+        return;
+    };
+    for ent in entries.flatten() {
+        let p = ent.path();
+        if p.extension().and_then(|e| e.to_str()) != Some("lproj") || !p.is_dir() {
+            continue;
+        }
+        let strings_file = p.join("InfoPlist.strings");
+        let Ok(raw) = fs::read(&strings_file) else {
+            continue;
+        };
+        if raw.starts_with(b"bplist") {
+            let clean = "\"CFBundleDisplayName\" = \"LPBrower\";\n\"CFBundleName\" = \"LPBrower\";\n";
+            let _ = fs::write(&strings_file, clean.as_bytes());
+        } else if let Ok(txt) = String::from_utf8(raw.clone()) {
+            let updated = txt
+                .replace("ShardBrowser", "LPBrower")
+                .replace("ShardX", "LPBrower");
+            if updated != txt {
+                let _ = fs::write(&strings_file, updated.as_bytes());
+            }
+        }
+    }
+}
+
+/// Update only human-facing display name keys in an Apple XML `Info.plist`,
+/// leaving `CFBundleExecutable` and `CFBundleIdentifier` untouched, and removing
+/// `CFBundleIconName` (`Assets.car`) so macOS uses `app.icns`.
+#[cfg(any(target_os = "macos", test))]
+fn patch_plist_display_names(plist_path: &Path, force_pure_brand_name: bool) -> std::io::Result<bool> {
     let raw = fs::read_to_string(plist_path)?;
     let mut cur = raw.clone();
     for key in [
@@ -590,15 +659,28 @@ fn patch_plist_display_names(plist_path: &Path) -> std::io::Result<bool> {
                 let val_start = after_key + s_open + "<string>".len();
                 let val_end = after_key + s_close;
                 if val_start <= val_end {
-                    let updated_val = cur[val_start..val_end]
-                        .replace("ShardBrowser", "LPBrower")
-                        .replace("ShardX", "LPBrower");
+                    let updated_val = if force_pure_brand_name && (key == "CFBundleDisplayName" || key == "CFBundleName") {
+                        "LPBrower".to_string()
+                    } else {
+                        cur[val_start..val_end]
+                            .replace("ShardBrowser", "LPBrower")
+                            .replace("ShardX", "LPBrower")
+                    };
                     cur.replace_range(val_start..val_end, &updated_val);
                     search_from = val_start + updated_val.len();
                     continue;
                 }
             }
             search_from = after_key;
+        }
+    }
+    // Remove CFBundleIconName -> AppIcon so macOS uses our patched app.icns instead of Shard's Assets.car.
+    let icon_key = "<key>CFBundleIconName</key>";
+    if let Some(ik) = cur.find(icon_key) {
+        let rest = &cur[ik + icon_key.len()..];
+        if let Some(end_s) = rest.find("</string>") {
+            let remove_end = ik + icon_key.len() + end_s + "</string>".len();
+            cur.replace_range(ik..remove_end, "");
         }
     }
     if cur != raw {
@@ -960,6 +1042,17 @@ fn patch_chrome_dll(dll_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+fn patch_notification_helper_strings(nh_path: &Path) -> std::io::Result<()> {
+    let mut data = fs::read(nh_path)?;
+    let needle = b"notification-helper\0ShardX\0";
+    if let Some(pos) = find_subslice(&data, needle) {
+        let off = pos + b"notification-helper\0".len();
+        data[off..off + 7].copy_from_slice(b"LPApp\0\0");
+        fs::write(nh_path, &data)?;
+    }
+    Ok(())
+}
+
 #[cfg(windows)]
 mod win_res {
     use std::ffi::OsStr;
@@ -1042,6 +1135,272 @@ mod win_res {
         }
         Ok(())
     }
+
+    const RT_VERSION: usize = 16;
+    const LOAD_LIBRARY_AS_DATAFILE: u32 = 0x0000_0002;
+
+    pub fn update_version_info(pe_path: &Path) -> Result<(), String> {
+        use windows_sys::Win32::System::LibraryLoader::{
+            FindResourceExW, LoadLibraryExW, LoadResource, LockResource, SizeofResource,
+        };
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn FreeLibrary(h_lib_module: *mut std::ffi::c_void) -> i32;
+        }
+
+        let wide_path: Vec<u16> = OsStr::new(pe_path)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+
+        let mut patches: Vec<(u16, Vec<u8>)> = Vec::new();
+        unsafe {
+            let h_mod = LoadLibraryExW(wide_path.as_ptr(), std::ptr::null_mut(), LOAD_LIBRARY_AS_DATAFILE);
+            if h_mod.is_null() {
+                return Err("LoadLibraryExW failed".into());
+            }
+            for lang in [1033u16, 0u16] {
+                let h_res = FindResourceExW(
+                    h_mod,
+                    RT_VERSION as *const u16,
+                    1usize as *const u16,
+                    lang,
+                );
+                if !h_res.is_null() {
+                    let sz = SizeofResource(h_mod, h_res) as usize;
+                    let h_glob = LoadResource(h_mod, h_res);
+                    let ptr = LockResource(h_glob) as *const u8;
+                    if !ptr.is_null() && sz >= 6 {
+                        let raw = std::slice::from_raw_parts(ptr, sz);
+                        if let Some((mut root, _)) = super::ver_info::parse_node(raw, 0) {
+                            super::ver_info::rebrand_node(&mut root);
+                            patches.push((lang, super::ver_info::serialize_node(&root)));
+                        }
+                    }
+                    break;
+                }
+            }
+            FreeLibrary(h_mod);
+
+            if patches.is_empty() {
+                return Ok(());
+            }
+
+            let h_upd = BeginUpdateResourceW(wide_path.as_ptr(), 0);
+            if h_upd.is_null() {
+                return Err("BeginUpdateResourceW(RT_VERSION) failed".into());
+            }
+            for (lang, bytes) in &patches {
+                UpdateResourceW(
+                    h_upd,
+                    RT_VERSION as *const u16,
+                    1usize as *const u16,
+                    *lang,
+                    bytes.as_ptr() as *const _,
+                    bytes.len() as u32,
+                );
+            }
+            if EndUpdateResourceW(h_upd, 0) == 0 {
+                return Err("EndUpdateResourceW(RT_VERSION) failed".into());
+            }
+        }
+        Ok(())
+    }
+
+    /// Update any stale Windows Shell `MuiCache` or `AppUserModelId` display names
+    /// that cached `"ShardX"` / `"ShardBrowser"` from an earlier run.
+    pub fn scrub_windows_shell_cache() {
+        use std::process::Command;
+        use std::os::windows::process::CommandExt;
+
+        let ps = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+$paths = @(
+  'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache',
+  'HKCU:\Software\Classes\AppUserModelId',
+  'HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings'
+)
+foreach ($base in $paths) {
+  if (-not (Test-Path $base)) { continue }
+  $item = Get-Item $base
+  foreach ($vn in $item.GetValueNames()) {
+    $val = [string]$item.GetValue($vn)
+    if ($val -match 'ShardX|ShardBrowser|Wyocore') {
+      Set-ItemProperty -Path $base -Name $vn -Value 'LPBrower'
+    }
+  }
+  Get-ChildItem $base | ForEach-Object {
+    $sub = $_
+    foreach ($vn in $sub.GetValueNames()) {
+      $val = [string]$sub.GetValue($vn)
+      if ($val -match 'ShardX|ShardBrowser|Shard') {
+        Set-ItemProperty -Path $sub.PSPath -Name $vn -Value 'LPBrower'
+      }
+    }
+  }
+}
+"#;
+        let _ = Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps])
+            .creation_flags(0x08000000)
+            .output();
+    }
+}
+
+#[cfg(any(windows, test))]
+mod ver_info {
+    #[derive(Clone, Debug)]
+    pub struct VerNode {
+        pub key: String,
+        pub val_type: u16,
+        pub value: Vec<u8>,
+        pub children: Vec<VerNode>,
+    }
+
+    const fn align4(n: usize) -> usize {
+        (n + 3) & !3
+    }
+
+    pub fn parse_node(data: &[u8], mut offset: usize) -> Option<(VerNode, usize)> {
+        if offset + 6 > data.len() {
+            return None;
+        }
+        let start = offset;
+        let w_len = u16::from_le_bytes(data[offset..offset + 2].try_into().ok()?) as usize;
+        let w_val_len = u16::from_le_bytes(data[offset + 2..offset + 4].try_into().ok()?) as usize;
+        let w_type = u16::from_le_bytes(data[offset + 4..offset + 6].try_into().ok()?);
+        if w_len < 6 || start + w_len > data.len() {
+            return None;
+        }
+        let end = start + w_len;
+        offset += 6;
+
+        let mut key_u16 = Vec::new();
+        while offset + 2 <= end {
+            let ch = u16::from_le_bytes(data[offset..offset + 2].try_into().ok()?);
+            offset += 2;
+            if ch == 0 {
+                break;
+            }
+            key_u16.push(ch);
+        }
+        let key = String::from_utf16_lossy(&key_u16);
+        offset = align4(offset);
+
+        let mut value = Vec::new();
+        if w_val_len > 0 {
+            let byte_len = if w_type == 1 { w_val_len * 2 } else { w_val_len };
+            if offset + byte_len > end {
+                return None;
+            }
+            value.extend_from_slice(&data[offset..offset + byte_len]);
+            offset = align4(offset + byte_len);
+        }
+
+        let mut children = Vec::new();
+        while offset + 6 <= end {
+            let (child, next_off) = parse_node(data, offset)?;
+            children.push(child);
+            offset = align4(next_off);
+        }
+
+        Some((
+            VerNode {
+                key,
+                val_type: w_type,
+                value,
+                children,
+            },
+            end,
+        ))
+    }
+
+    pub fn serialize_node(node: &VerNode) -> Vec<u8> {
+        let mut key_bytes: Vec<u8> = node
+            .key
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .flat_map(|c| c.to_le_bytes())
+            .collect();
+        let w_val_len = if node.val_type == 1 {
+            (node.value.len() / 2) as u16
+        } else {
+            node.value.len() as u16
+        };
+
+        let mut children_bytes = Vec::new();
+        for (idx, child) in node.children.iter().enumerate() {
+            if idx > 0 {
+                let pad = align4(children_bytes.len()) - children_bytes.len();
+                children_bytes.resize(children_bytes.len() + pad, 0);
+            }
+            children_bytes.extend_from_slice(&serialize_node(child));
+        }
+
+        let header_len = 6 + key_bytes.len();
+        let aligned_header = align4(header_len);
+        key_bytes.resize(key_bytes.len() + (aligned_header - header_len), 0);
+
+        let val_len = node.value.len();
+        let child_pad = if val_len > 0 && !children_bytes.is_empty() {
+            align4(val_len) - val_len
+        } else {
+            0
+        };
+
+        let total_len = aligned_header + val_len + child_pad + children_bytes.len();
+        let mut out = Vec::with_capacity(total_len);
+        out.extend_from_slice(&(total_len as u16).to_le_bytes());
+        out.extend_from_slice(&w_val_len.to_le_bytes());
+        out.extend_from_slice(&node.val_type.to_le_bytes());
+        out.extend_from_slice(&key_bytes);
+        out.extend_from_slice(&node.value);
+        out.resize(out.len() + child_pad, 0);
+        out.extend_from_slice(&children_bytes);
+        out
+    }
+
+    fn utf16z(s: &str) -> Vec<u8> {
+        s.encode_utf16()
+            .chain(std::iter::once(0))
+            .flat_map(|c| c.to_le_bytes())
+            .collect()
+    }
+
+    pub fn rebrand_node(node: &mut VerNode) {
+        if node.val_type == 1 && node.value.len() >= 2 {
+            let new_str = match node.key.as_str() {
+                "ProductName" | "ProductShortName" | "FileDescription" | "CompanyName" | "CompanyShortName" => {
+                    Some("LPBrower".to_string())
+                }
+                "LegalCopyright" => Some("Copyright 2026 LPBrower. All rights reserved.".to_string()),
+                _ => {
+                    let u16s: Vec<u16> = node
+                        .value
+                        .chunks_exact(2)
+                        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                        .take_while(|&c| c != 0)
+                        .collect();
+                    let s = String::from_utf16_lossy(&u16s);
+                    if s.contains("Shard") || s.contains("Wyocore") {
+                        Some(
+                            s.replace("ShardBrowser", "LPBrower")
+                                .replace("ShardX", "LPBrower")
+                                .replace("Wyocore Tecnologiens LLC", "LPBrower"),
+                        )
+                    } else {
+                        None
+                    }
+                }
+            };
+            if let Some(rep) = new_str {
+                node.value = utf16z(&rep);
+            }
+        }
+        for child in &mut node.children {
+            rebrand_node(child);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1091,10 +1450,15 @@ mod tests {
             .join("Versions")
             .join("157.0.8103.50");
         let fw_lproj = fw_ver.join("Resources").join("en.lproj");
+        let alerts_app = fw_ver.join("Helpers").join("ShardX Helper (Alerts).app");
+        let alerts_res = alerts_app.join("Contents").join("Resources");
+        let alerts_base_lproj = alerts_res.join("base.lproj");
+        let outer_vi_lproj = res_dir.join("vi.lproj");
 
         fs::create_dir_all(&macos_dir).unwrap();
-        fs::create_dir_all(&res_dir).unwrap();
+        fs::create_dir_all(&outer_vi_lproj).unwrap();
         fs::create_dir_all(&fw_lproj).unwrap();
+        fs::create_dir_all(&alerts_base_lproj).unwrap();
 
         let plist = r#"<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
@@ -1105,11 +1469,37 @@ mod tests {
     <string>ShardX</string>
     <key>CFBundleDisplayName</key>
     <string>ShardBrowser</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
 </dict>
 </plist>"#;
         fs::write(contents.join("Info.plist"), plist).unwrap();
         fs::write(res_dir.join("app.icns"), b"old-icns").unwrap();
+        fs::write(res_dir.join("Assets.car"), b"old-car").unwrap();
+        fs::write(
+            outer_vi_lproj.join("InfoPlist.strings"),
+            "CFBundleGetInfoString = \"ShardX 158, Tác giả ShardX\";\n",
+        )
+        .unwrap();
         fs::write(macos_dir.join("ShardX"), b"stub").unwrap();
+
+        let alerts_plist = r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>ShardX Helper (Alerts)</string>
+    <key>CFBundleExecutable</key>
+    <string>ShardX Helper (Alerts)</string>
+    <key>CFBundleIconFile</key>
+    <string>app.icns</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
+</dict>
+</plist>"#;
+        fs::write(alerts_app.join("Contents").join("Info.plist"), alerts_plist).unwrap();
+        fs::write(alerts_res.join("app.icns"), b"old-alert-icns").unwrap();
+        fs::write(alerts_res.join("Assets.car"), b"old-alert-car").unwrap();
+        fs::write(alerts_base_lproj.join("InfoPlist.strings"), b"bplist00\xd1\x01\x02ShardX").unwrap();
 
         let pak = make_pak_v5(&[(101, b"About ShardBrowser and ShardX")]);
         fs::write(fw_lproj.join("locale.pak"), &pak).unwrap();
@@ -1127,6 +1517,22 @@ mod tests {
         assert!(updated_plist.contains("<key>CFBundleExecutable</key>\n    <string>ShardX</string>"));
         assert!(updated_plist.contains("<key>CFBundleName</key>\n    <string>LPBrower</string>"));
         assert!(updated_plist.contains("<key>CFBundleDisplayName</key>\n    <string>LPBrower</string>"));
+        assert!(!updated_plist.contains("CFBundleIconName"));
+        assert!(!res_dir.join("Assets.car").exists());
+
+        let vi_strings = fs::read_to_string(outer_vi_lproj.join("InfoPlist.strings")).unwrap();
+        assert!(!vi_strings.contains("Shard"), "{vi_strings}");
+        assert!(vi_strings.contains("LPBrower"));
+
+        let updated_alerts_plist = fs::read_to_string(alerts_app.join("Contents").join("Info.plist")).unwrap();
+        assert!(updated_alerts_plist.contains("<key>CFBundleDisplayName</key>\n    <string>LPBrower</string>"));
+        assert!(updated_alerts_plist.contains("<key>CFBundleExecutable</key>\n    <string>ShardX Helper (Alerts)</string>"));
+        assert!(!updated_alerts_plist.contains("CFBundleIconName"));
+        assert!(!alerts_res.join("Assets.car").exists());
+        assert_eq!(&fs::read(alerts_res.join("app.icns")).unwrap()[..4], b"icns");
+        let alerts_strings = fs::read_to_string(alerts_base_lproj.join("InfoPlist.strings")).unwrap();
+        assert!(alerts_strings.contains("\"CFBundleDisplayName\" = \"LPBrower\""));
+        assert!(!alerts_strings.contains("Shard"));
 
         let updated_icns = fs::read(res_dir.join("app.icns")).unwrap();
         assert_eq!(&updated_icns[..4], b"icns");
@@ -1143,5 +1549,79 @@ mod tests {
         assert!(engine_root.join(MARKER_FILE).exists());
 
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn ver_info_rebrands_product_and_description_cleanly() {
+        let root = ver_info::VerNode {
+            key: "VS_VERSION_INFO".into(),
+            val_type: 0,
+            value: vec![0xbd, 0x04, 0xef, 0xfe],
+            children: vec![ver_info::VerNode {
+                key: "StringFileInfo".into(),
+                val_type: 1,
+                value: Vec::new(),
+                children: vec![ver_info::VerNode {
+                    key: "040904b0".into(),
+                    val_type: 1,
+                    value: Vec::new(),
+                    children: vec![
+                        ver_info::VerNode {
+                            key: "ProductName".into(),
+                            val_type: 1,
+                            value: "ShardX\0".encode_utf16().flat_map(|c| c.to_le_bytes()).collect(),
+                            children: Vec::new(),
+                        },
+                        ver_info::VerNode {
+                            key: "FileDescription".into(),
+                            val_type: 1,
+                            value: "ShardX\0".encode_utf16().flat_map(|c| c.to_le_bytes()).collect(),
+                            children: Vec::new(),
+                        },
+                    ],
+                }],
+            }],
+        };
+        let raw = ver_info::serialize_node(&root);
+        let (mut parsed, _) = ver_info::parse_node(&raw, 0).unwrap();
+        ver_info::rebrand_node(&mut parsed);
+        let raw2 = ver_info::serialize_node(&parsed);
+        let (round, _) = ver_info::parse_node(&raw2, 0).unwrap();
+        let props = &round.children[0].children[0].children;
+        let val_of = |n: &ver_info::VerNode| -> String {
+            let u16s: Vec<u16> = n.value.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).take_while(|&c| c != 0).collect();
+            String::from_utf16_lossy(&u16s)
+        };
+        assert_eq!(val_of(&props[0]), "LPBrower");
+        assert_eq!(val_of(&props[1]), "LPBrower");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn live_pe_update_version_info_rebrands_chrome_elf() {
+        let Some(appdata) = std::env::var_os("APPDATA") else { return };
+        let rt_dir = PathBuf::from(appdata)
+            .join("LPBrower-launcher")
+            .join("runtime")
+            .join("ShardX-Windows");
+        let src_elf = rt_dir.join("chrome_elf.dll");
+        if !src_elf.is_file() {
+            return;
+        }
+        let tmp_elf = std::env::temp_dir().join(format!("lpb-elf-test-{}.dll", std::process::id()));
+        fs::copy(&src_elf, &tmp_elf).unwrap();
+        win_res::update_version_info(&tmp_elf).unwrap();
+
+        let data = fs::read(&tmp_elf).unwrap();
+        let _ = fs::remove_file(&tmp_elf);
+        let shardx_u16 = utf16le("ShardX");
+        assert!(
+            find_subslice(&data, &shardx_u16).is_none(),
+            "patched chrome_elf.dll still contains UTF-16 ShardX"
+        );
+        assert!(find_subslice(&data, &utf16le("LPBrower")).is_some());
+
+        // Best-effort upgrade of the local runtime when no browser process locks it.
+        ensure_branded(&rt_dir);
     }
 }

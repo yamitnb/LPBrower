@@ -8,6 +8,7 @@ export const profileSave = (payload: any, password?: string) =>
   invoke<ProfileMeta>("profile_save", password === undefined ? { payload } : { payload, password });
 export const profileDelete = (id: string) => invoke("profile_delete", { id });
 export const profileClone = (id: string) => invoke<ProfileMeta>("profile_clone", { id });
+export const profileCreateShortcut = (id: string) => invoke<string>("profile_create_shortcut", { id });
 export const profileSetPin = (id: string, pinned: boolean) => invoke("profile_set_pin", { id, pinned });
 export const profileSetFolder = (id: string, folder: string) => invoke("profile_set_folder", { id, folder });
 export const profileBindProxy = (profileId: string, proxyId: string | null) => invoke("profile_bind_proxy", { profileId, proxyId });

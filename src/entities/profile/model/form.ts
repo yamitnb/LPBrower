@@ -8,6 +8,7 @@ export const defaultForm = (): ProfileForm => ({
   rev: 0,
   name: "",
   notes: "",
+  taskbar_title: "",
   proxy_id: null,
   color: "",
   extensions: [],
@@ -65,6 +66,7 @@ export function fromStored(stored: any): ProfileForm {
   f.proxy_id = stored?._meta?.proxy_id ?? null;
   f.name = stored?.name ?? "";
   f.notes = stored?.notes ?? "";
+  f.taskbar_title = stored?._meta?.taskbar_title ?? "";
   f.color = stored?._meta?.color ?? "";
   f.extensions = Array.isArray(stored?._meta?.extensions) ? stored._meta.extensions : [];
   f.android_media = stored?._meta?.android_media === true;
@@ -136,6 +138,7 @@ export function toStored(f: ProfileForm, lib: FingerprintEntry | null, prev?: an
     ...(f.real_gpu ? { real_gpu: true } : {}),
     // Absent, not empty: that is what "derive it" means on disk.
     ...(f.color ? { color: f.color } : {}),
+    ...(f.taskbar_title?.trim() ? { taskbar_title: f.taskbar_title.trim() } : {}),
     extensions: f.extensions,
     ...(f.android_media ? { android_media: true } : {}),
     // The operator picked a resolution rather than taking the template's. The

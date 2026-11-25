@@ -479,6 +479,7 @@ pub mod profile {
             id: stored.meta.id.clone(),
             name: text("name", "(unnamed)"),
             notes: text("notes", ""),
+            taskbar_title: stored.meta.taskbar_title.clone().unwrap_or_default(),
             proxy_id: stored.meta.proxy_id.clone(),
             last_launched_at: stored.meta.last_launched_at.clone(),
             created_at: stored.meta.created_at.clone(),

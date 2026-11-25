@@ -789,7 +789,13 @@ export const useProfile = create<ProfileStore>((set, get) => ({
     // The list shows Peek's name, notes, proxy and color as the save starts (PERF-13);
     // a protected row only what it shows while locked.
     const edit = before
-      ? beginEdit(draft.id, locked ? { name: draft.name, color: draft.color || null } : { name: draft.name, notes: draft.notes, proxy_id: draft.proxy_id, color: draft.color || null }, before)
+      ? beginEdit(
+        draft.id,
+        locked
+          ? { name: draft.name, color: draft.color || null }
+          : { name: draft.name, notes: draft.notes, taskbar_title: draft.taskbar_title.trim(), proxy_id: draft.proxy_id, color: draft.color || null },
+        before,
+      )
       : null;
     if (edit) showLocal(set, get);
     try {

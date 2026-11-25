@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { cn } from "@proxyshard/shardx-ui-kit";
 // Loading the definitions registers them: every surface finds its commands
 // from the first render. The app's keys come from them too.
@@ -221,6 +222,28 @@ export function App() {
   // download (the gate raises "fingerprints").
   const initProfiles = useProfile((s) => s.init);
   useEffect(() => { void initProfiles().then(forgetDeletedProfileTags); }, [initProfiles]);
+
+  useEffect(() => {
+    let disposed = false;
+    let un: (() => void) | undefined;
+    listen<string>("shortcut-launch-protected", async (e) => {
+      const id = e.payload;
+      if (!id) return;
+      let row = useProfile.getState().profiles.find((p) => p.id === id);
+      if (!row) {
+        await useProfile.getState().reload();
+        row = useProfile.getState().profiles.find((p) => p.id === id);
+      }
+      if (row) void useProfile.getState().startStop(row);
+    }).then((fn) => {
+      if (disposed) fn();
+      else un = fn;
+    });
+    return () => {
+      disposed = true;
+      un?.();
+    };
+  }, []);
 
   return (
     <>

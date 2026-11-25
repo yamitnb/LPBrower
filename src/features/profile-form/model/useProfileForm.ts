@@ -94,7 +94,7 @@ const key = (d: ProfileFormDraft) => JSON.stringify({
 const sameTags = (a: ProfileFormDraft, b: ProfileFormDraft) =>
   JSON.stringify([[...a.tagIds].sort(), [...a.newTags].sort()]) === JSON.stringify([[...b.tagIds].sort(), [...b.newTags].sort()]);
 
-const BASICS = new Set<keyof ProfileForm>(["name", "color", "notes"]);
+const BASICS = new Set<keyof ProfileForm>(["name", "taskbar_title", "color", "notes"]);
 const PROXY = new Set<keyof ProfileForm>(["proxy_id"]);
 const EXTENSIONS = new Set<keyof ProfileForm>(["extensions"]);
 /** Not the person's to change: never counted as a change. */
@@ -227,6 +227,7 @@ async function loadCreate(session: number, proxyId: string | null, preset?: Part
   const base = {
     ...templated,
     notes: "",
+    taskbar_title: "",
     hardware_concurrency: picks.hardware_concurrency ?? templated.hardware_concurrency,
     device_memory: picks.device_memory ?? templated.device_memory,
     platform_version: picks.platform_version ?? templated.platform_version,
@@ -343,6 +344,7 @@ export async function randomizeFingerprint(targetOs?: string): Promise<void> {
   const templated = fromStored({ ...structuredClone(fp.payload ?? {}), _meta: { gpu_preset_id: fp.id } });
   delete (templated as any).name;
   delete (templated as any).notes;
+  delete (templated as any).taskbar_title;
 
   const cpuList = [4, 6, 8, 12, 16];
   const ramList = [4, 8, 16, 32];
@@ -398,6 +400,7 @@ export async function setFormOs(os: string): Promise<void> {
   const templated = fromStored({ ...structuredClone(fp.payload ?? {}), _meta: { gpu_preset_id: fp.id } });
   delete (templated as any).name;
   delete (templated as any).notes;
+  delete (templated as any).taskbar_title;
   const host = s.host ?? (await hostScreen());
 
   const changes: Partial<ProfileForm> = {

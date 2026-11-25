@@ -122,6 +122,18 @@ export function ProfileBlueprintCard({
               <CheckCircleIcon className="size-3 text-success-base" />
               Sẵn sàng
             </span>
+            {f.taskbar_title?.trim() && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span
+                  title={`Nhãn Taskbar: ${f.taskbar_title.trim()}`}
+                  style={f.color ? { backgroundColor: f.color } : undefined}
+                  className="inline-flex max-w-[96px] items-center truncate rounded-full bg-primary-base px-2 py-0.5 text-[10px] font-bold text-white"
+                >
+                  {f.taskbar_title.trim()}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
@@ -161,6 +173,7 @@ export function ProfileBlueprintCard({
 
       {/* Hardware & Fingerprint Telemetry Rows */}
       <div className="flex flex-col divide-y divide-stroke-soft-200/70 px-3.5 py-1 text-xs">
+        <SpecRow label="Taskbar Title" value={f.taskbar_title?.trim() || "Mặc định (Trống)"} title={f.taskbar_title?.trim() || undefined} />
         <SpecRow label="GPU" value={gpuTitle} title={gpuTitle} />
         <SpecRow label="CPU / RAM" value={cpuRam} mono />
         <SpecRow label="Màn hình" value={screenText} mono />

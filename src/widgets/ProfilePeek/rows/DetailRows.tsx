@@ -35,6 +35,9 @@ export function ProfileDetails({ profile }: { profile: ProfileMeta }) {
   return (
     // 2 px between 32 px rows: their text sits 14 px apart (owner, "more air").
     <div className="flex flex-col gap-[2px]">
+      {!!profile.taskbar_title?.trim() && (
+        <TaskbarTitleDetail value={profile.taskbar_title.trim()} color={profile.color ?? ""} />
+      )}
       <FolderDetail folder={profile.folder} />
       <TagsDetail profileId={profile.id} />
       <ColorDetail color={profile.color ?? ""} />
@@ -46,6 +49,24 @@ export function ProfileDetails({ profile }: { profile: ProfileMeta }) {
       {profile.rights && <AccessDetail profile={profile} />}
       {openElsewhere(profile) && <OpenOnDetail profile={profile} />}
     </div>
+  );
+}
+
+function TaskbarTitleDetail({ value, color }: { value: string; color: string }) {
+  const t = useT();
+  return (
+    <PropertyRow id="taskbar-title" label={t("peek.taskbarTitle") || "Taskbar Title"}>
+      {() => (
+        <Value>
+          <span
+            style={color ? { backgroundColor: color } : undefined}
+            className="inline-flex max-w-[140px] items-center truncate rounded-full bg-primary-base px-2 py-0.5 text-[11px] font-bold text-white"
+          >
+            {value}
+          </span>
+        </Value>
+      )}
+    </PropertyRow>
   );
 }
 
