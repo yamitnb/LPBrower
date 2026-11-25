@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 #[path = "ntp_template.rs"]
 mod ntp_template;
 
-const MARKER_FILE: &str = ".lpbrower-branded-v8";
+const MARKER_FILE: &str = ".lpbrower-branded-v9";
 
 #[cfg(windows)]
 const ICO_BYTES: &[u8] = include_bytes!("../icons/browser-icon.ico");
@@ -337,12 +337,12 @@ pub fn ensure_branded(engine_dir: &Path) {
             return;
         }
         if brand_macos_bundle(&app_bundle) {
-            if fs::write(&marker, "v7\n").is_err() {
+            if fs::write(&marker, "v9\n").is_err() {
                 if let Some(fb) = fallback_marker {
                     if let Some(parent) = fb.parent() {
                         let _ = fs::create_dir_all(parent);
                     }
-                    let _ = fs::write(&fb, "v7\n");
+                    let _ = fs::write(&fb, "v9\n");
                 }
             }
         }
@@ -406,7 +406,7 @@ pub fn ensure_branded(engine_dir: &Path) {
     }
 
     if all_ok {
-        let _ = fs::write(&marker, "v7\n");
+        let _ = fs::write(&marker, "v9\n");
     }
 }
 
@@ -931,16 +931,19 @@ fn patch_scale_paks(engine_dir: &Path) {
     let p100 = engine_dir.join("chrome_100_percent.pak");
     if p100.is_file() {
         let _ = patch_pak_v5(&p100, |rid, _| match rid {
+            // 697 = IDR_NTP_FAVICON (chrome://newtab tab icon),
+            // 15306 / 41292 = product logo 16px / chrome:// WebUI favicons,
+            // 15304 = product logo 32px.
+            697 | 15306 | 41292 => Some(LP_PNG_16.to_vec()),
             15304 => Some(LP_PNG_32.to_vec()),
-            15306 => Some(LP_PNG_16.to_vec()),
             _ => None,
         });
     }
     let p200 = engine_dir.join("chrome_200_percent.pak");
     if p200.is_file() {
         let _ = patch_pak_v5(&p200, |rid, _| match rid {
+            697 | 15306 | 41292 => Some(LP_PNG_32.to_vec()),
             15304 => Some(LP_PNG_64.to_vec()),
-            15306 => Some(LP_PNG_32.to_vec()),
             _ => None,
         });
     }
