@@ -3,13 +3,58 @@
   "repoUrl": "https://github.com/yamitnb/LPBrower",
   "releases": [
     {
+      "version": "2.1.6",
+      "date": "2026-11-25",
+      "entries": [
+        {
+          "id": "chrome-158-engine",
+          "title": "Chrome 158 browser engine",
+          "lead": "The browser engine now runs on Chrome 158 with per-OS desktop builds and updated fingerprint migrations.",
+          "tag": "new",
+          "scope": "browser",
+          "blocks": [
+            {
+              "type": "p",
+              "text": "Profiles report the Chrome 158 build shipped for their system (158.0.8127.37 on Windows and macOS, 158.0.8127.36 on Linux, 158.0.8127.42 on Android), with automatic migrations for laptop battery, MacBook Air 15 screen size, WebGL extensions, Linux GLX graphics, and Android ANGLE profiles."
+            }
+          ]
+        },
+        {
+          "id": "app-and-engine-updater",
+          "title": "Launcher and browser engine updater",
+          "lead": "Check, download, and install both LPBrowser updates and Chromium browser engine updates directly inside Settings.",
+          "tag": "new",
+          "scope": "launcher",
+          "blocks": [
+            {
+              "type": "p",
+              "text": "Background checks alert you when a newer LPBrowser release or Chromium browser engine build is published, with live download progress, safe profile shutdown, and automatic LPBrowser re-branding after every engine upgrade."
+            }
+          ]
+        },
+        {
+          "id": "blank-tab-shortcuts-and-window-memory",
+          "title": "New tab shortcuts and window size memory",
+          "lead": "Blank tabs include editable website shortcuts and an LPBrowser favicon, and windows remember their size across sessions.",
+          "tag": "improved",
+          "scope": "launcher",
+          "blocks": [
+            {
+              "type": "p",
+              "text": "The launcher and each browser profile restore their previous window size and position, the profile table keeps columns fixed in place, and blank tabs display customizable quick shortcuts with instant add, edit, and delete support."
+            }
+          ]
+        }
+      ]
+    },
+    {
       "version": "2.1.5",
       "date": "2026-11-25",
       "entries": [
         {
           "id": "taskbar-title-and-shortcuts",
           "title": "Taskbar Title and Desktop shortcuts",
-          "lead": "Assign a custom taskbar badge per profile and create direct Desktop launch shortcuts from the context menu.",
+          "lead": "Assign a custom taskbar badge per profile and create direct Desktop shortcuts from the context menu.",
           "tag": "new",
           "scope": "launcher",
           "blocks": [

@@ -252,6 +252,16 @@ fn fill_window_from_screen(
 /// This computer's monitor: width and height in CSS px, and its pixel ratio.
 pub type HostScreen = (i64, i64, f64);
 
+/// Whether the global "Real screen" mode applies: never to a hand-picked
+/// resolution, and never to a phone, which keeps the handset's screen.
+fn wants_real_screen(
+    mode: Option<&str>,
+    picked_by_hand: bool,
+    config: &serde_json::Map<String, serde_json::Value>,
+) -> bool {
+    mode == Some("real") && !picked_by_hand && !profile::claims_mobile(config)
+}
+
 /// A new Windows or Linux profile claims this computer's screen (`host`, in CSS
 /// px, with its pixel ratio), keeping the fingerprint's taskbar insets; macOS,
 /// phones, a screen picked by hand (`_meta.screen_custom`) and a profile that
@@ -642,8 +652,11 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
     // left out of it, or the switch would report the host's screen over exactly
     // the one they asked for.
     let s = settings::load()?;
-    let use_real_screen =
-        s.screen_resolution_mode.as_deref() == Some("real") && !input.stored.meta.screen_custom;
+    let use_real_screen = wants_real_screen(
+        s.screen_resolution_mode.as_deref(),
+        input.stored.meta.screen_custom,
+        &input.stored.config,
+    );
 
     // Strip `_meta` wrapper before inspecting auto sentinels / WebRTC policy.
     let mut raw = engine_config(&input.stored);

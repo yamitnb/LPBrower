@@ -1,13 +1,23 @@
-import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useRef } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Button } from "@proxyshard/shardx-ui-kit";
+import { Button, ProgressBar } from "@proxyshard/shardx-ui-kit";
 import { GH_REPO_URL } from "../../../shared/lib/utils";
-import type { RtUpdate } from "../../../shared/types";
+import { fmtBytesProgress } from "../../../shared/lib/format";
 import { useWhatsNew } from "../../../shared/model/whatsNew";
+import { confirmModal } from "../../../shared/model/confirm";
 import { toast } from "../../../shared/model/toast";
 import { useOnboarding } from "../../../features/onboarding";
 import { takeTheTour } from "../../../features/tour";
+import {
+  askLauncherUpdate,
+  checkLauncherUpdate,
+  useLauncherUpdate,
+} from "../../../features/launcher-update";
+import {
+  checkEngineUpdate,
+  startEngineUpdate,
+  useEngineUpdate,
+} from "../../../widgets/FirstRunGate/engineUpdate";
 import { useT } from "../../../shared/i18n";
 import { DetailRow, DetailsCard } from "../../../shared/ui/DetailsCard";
 
@@ -16,26 +26,81 @@ export function AboutSection() {
   const openWhatsNew = useWhatsNew((s) => s.setOpen);
   const tipsOff = useOnboarding((s) => s.tipsOff);
   const replayRef = useRef<HTMLButtonElement>(null);
-  const [info, setInfo] = useState<RtUpdate | null>(null);
-  const [failed, setFailed] = useState(false);
+
+  // App Launcher update state
+  const current = useLauncherUpdate((s) => s.current);
+  const offer = useLauncherUpdate((s) => s.offer);
+  const checking = useLauncherUpdate((s) => s.checking);
+  const checked = useLauncherUpdate((s) => s.checked);
+  const offline = useLauncherUpdate((s) => s.offline);
+  const downloading = useLauncherUpdate((s) => s.downloading);
+  const installing = useLauncherUpdate((s) => s.installing);
+  const appProgress = useLauncherUpdate((s) => s.progress);
+
+  // Core Chromium engine state
+  const engineStatus = useEngineUpdate((s) => s.status);
+  const engineChecking = useEngineUpdate((s) => s.checking);
+  const engineUpdating = useEngineUpdate((s) => s.retrying);
+  const engineProgress = useEngineUpdate((s) => s.progress);
+
+  // Refresh both App Launcher & Core Chromium remote status when About opens.
   useEffect(() => {
-    invoke<RtUpdate>("launcher_update_check").then(setInfo).catch(() => setFailed(true));
+    void checkLauncherUpdate({ silent: true });
+    void checkEngineUpdate({ silent: true });
   }, []);
 
-  const releaseUrl = info?.update_available ? info.release_url : null;
-  const status = failed
-    ? t("settings.aboutOffline")
-    : info === null
-      ? t("settings.aboutChecking")
-      : info.update_available
-        ? t("settings.aboutUpdate", { v: info.latest ?? "" })
-        : info.latest
-          ? t("settings.aboutUpToDate")
-          : t("settings.aboutOffline");
+  const appStatus = checking && !checked
+    ? t("settings.aboutChecking")
+    : installing && offer
+      ? t("launcherUpdate.installing", { v: offer.version })
+      : downloading && offer
+        ? (appProgress?.total
+          ? t("launcherUpdate.downloadingSize", { v: offer.version, progress: fmtBytesProgress(appProgress.received, appProgress.total) })
+          : t("launcherUpdate.downloading", { v: offer.version }))
+        : offer
+          ? t("settings.aboutUpdate", { v: offer.version })
+          : offline
+            ? t("settings.aboutOffline")
+            : checked
+              ? t("settings.aboutUpToDate")
+              : t("settings.aboutChecking");
 
-  // Page tips back on. This page counts as seen, so the press does not start
-  // a tip over you; the toast says what happened, and the keyboard moves to
-  // the button beside, as this one leaves.
+  const installedEngineVer = engineStatus?.installed_chromium_version ?? null;
+  const installedBuild = engineStatus?.installed_engine_build ?? null;
+  const engineVersionText = !engineStatus
+    ? "…"
+    : !engineStatus.installed
+      ? t("settings.engineNotInstalled")
+      : installedEngineVer ?? "…";
+
+  const engineUpdateText = engineUpdating
+    ? (engineProgress?.phase === "download"
+      ? t("engineUpdate.downloaded", { progress: fmtBytesProgress(engineProgress.received, engineProgress.total) })
+      : engineProgress?.phase === "branding"
+        ? t("firstRunGate.branding")
+        : engineProgress ? t("firstRunGate.extracting") : t("firstRunGate.contactingCdn"))
+    : engineChecking && !engineStatus?.remote_checked
+      ? t("settings.aboutChecking")
+      : !engineStatus
+        ? t("settings.aboutChecking")
+        : !engineStatus.installed
+          ? t("settings.engineNotInstalled")
+          : engineStatus.needs_newer_launcher
+            ? t("engineUpdate.needsNewerLauncher", { v: engineStatus.min_launcher_version ?? "" })
+            : engineStatus.update_available
+              ? t("settings.engineUpdateAvailable", { v: engineStatus.remote_chromium_version ?? "" })
+              : engineStatus.fingerprints_update_available
+                ? t("settings.engineFingerprintsUpdate")
+                : engineStatus.remote_checked && !engineStatus.manifest_reachable
+                  ? t("settings.aboutOffline")
+                  : engineStatus.remote_checked
+                    ? t("engineUpdate.upToDate")
+                    : t("settings.aboutChecking");
+
+  const hasEngineUpdate = Boolean(
+    engineStatus && (!engineStatus.installed || engineStatus.update_available || engineStatus.fingerprints_update_available || engineStatus.update_staged),
+  );
+
   const tipsOn = () => {
     const onboarding = useOnboarding.getState();
     onboarding.markPageSeen("settings");
@@ -44,49 +109,140 @@ export function AboutSection() {
     replayRef.current?.focus();
   };
 
-  // The details card (owner, "more air"): the version, which a person may
-  // copy for a bug report, and the update status; the actions under it.
+  const confirmReinstallEngine = async () => {
+    const ok = await confirmModal({
+      title: t("settings.engineReinstallTitle"),
+      message: t("settings.engineReinstallHelp"),
+      confirmLabel: t("settings.engineReinstall"),
+    });
+    if (ok) await startEngineUpdate({ force: true });
+  };
+
   return (
-    <div className="flex flex-col gap-[10px]">
-      <DetailsCard id="about" title="LPBrower Launcher">
-        <DetailRow id="version" label={t("settings.aboutVersionLabel")} copy={info ? { value: info.current } : undefined}>
-          {info?.current ?? "…"}
-        </DetailRow>
-        <DetailRow id="updates" label={t("settings.aboutUpdatesLabel")}>
-          <span className={info?.update_available ? "text-warning-text" : undefined}>{status}</span>
-        </DetailRow>
-        <DetailRow id="website" label={t("settings.aboutWebsiteLabel")}>
-          {/* A real href for the link's role; the click opens the system browser. */}
-          <a
-            href={GH_REPO_URL}
-            className="text-primary-text underline underline-offset-2"
-            onClick={(e) => { e.preventDefault(); openUrl(GH_REPO_URL).catch(() => {}); }}
+    <div className="flex flex-col gap-[14px]">
+      {/* App Launcher Update Card */}
+      <div className="flex flex-col gap-[10px]">
+        <DetailsCard id="about" title="LPBrowser">
+          <DetailRow id="version" label={t("settings.aboutVersionLabel")} copy={current ? { value: current } : undefined}>
+            {current ?? "…"}
+          </DetailRow>
+          <DetailRow id="updates" label={t("settings.aboutUpdatesLabel")}>
+            <span className={offer ? "text-warning-text" : undefined}>{appStatus}</span>
+          </DetailRow>
+          {downloading && appProgress && (
+            <div className="pb-2 pt-0.5">
+              <ProgressBar aria-label={t("launcherUpdate.downloading", { v: offer?.version ?? "" })} value={appProgress.percent} color="primary" />
+            </div>
+          )}
+          <DetailRow id="website" label={t("settings.aboutWebsiteLabel")}>
+            <a
+              href={GH_REPO_URL}
+              className="text-primary-text underline underline-offset-2"
+              onClick={(e) => { e.preventDefault(); openUrl(GH_REPO_URL).catch(() => {}); }}
+            >
+              {GH_REPO_URL}
+            </a>
+          </DetailRow>
+        </DetailsCard>
+        <div className="flex flex-wrap items-center gap-2">
+          {offer && (
+            <Button
+              variant="primary"
+              mode="filled"
+              size="xsmall"
+              isLoading={downloading || installing}
+              onClick={() => void askLauncherUpdate()}
+            >
+              {t("settings.aboutGetUpdate")}
+            </Button>
+          )}
+          <Button
+            variant="neutral"
+            mode="stroke"
+            size="xsmall"
+            isLoading={checking}
+            disabled={downloading || installing}
+            onClick={() => void checkLauncherUpdate({ silent: false })}
           >
-            {GH_REPO_URL}
-          </a>
-        </DetailRow>
-      </DetailsCard>
-      <div className="flex flex-wrap items-center gap-2">
-        {releaseUrl && (
-          <Button variant="primary" mode="filled" size="xsmall" onClick={() => void openUrl(releaseUrl).catch(() => {})}>
-            {t("settings.aboutGetUpdate")}
+            {t("settings.aboutCheckUpdates")}
           </Button>
-        )}
-        <Button variant="neutral" mode="stroke" size="xsmall" onClick={() => openWhatsNew(true)}>
-          {t("whatsNew.title")}
-        </Button>
-        {/* Replay goes to Profiles first, through the unsaved-changes guard (Settings has its own Save bar). */}
-        <Button ref={replayRef} variant="neutral" mode="stroke" size="xsmall" onClick={() => void takeTheTour()}>
-          {t("settings.aboutReplayTour")}
-        </Button>
-        {tipsOff && (
-          <Button variant="neutral" mode="ghost" size="xsmall" onClick={tipsOn}>
-            {t("settings.aboutTipsAgain")}
+          <Button variant="neutral" mode="stroke" size="xsmall" onClick={() => openWhatsNew(true)}>
+            {t("whatsNew.title")}
           </Button>
-        )}
-        <Button variant="neutral" mode="ghost" size="xsmall" onClick={() => void openUrl(GH_REPO_URL).catch(() => {})}>
-          GitHub
-        </Button>
+          <Button ref={replayRef} variant="neutral" mode="stroke" size="xsmall" onClick={() => void takeTheTour()}>
+            {t("settings.aboutReplayTour")}
+          </Button>
+          {tipsOff && (
+            <Button variant="neutral" mode="ghost" size="xsmall" onClick={tipsOn}>
+              {t("settings.aboutTipsAgain")}
+            </Button>
+          )}
+          <Button variant="neutral" mode="ghost" size="xsmall" onClick={() => void openUrl(GH_REPO_URL).catch(() => {})}>
+            GitHub
+          </Button>
+        </div>
+      </div>
+
+      {/* Core Chromium Engine Update Card */}
+      <div className="flex flex-col gap-[10px]">
+        <DetailsCard id="engine" title={t("settings.engineCardTitle")}>
+          <DetailRow
+            id="engine-version"
+            label={t("settings.engineVersionLabel")}
+            copy={installedEngineVer ? { value: installedEngineVer } : undefined}
+          >
+            {engineVersionText}
+          </DetailRow>
+          {installedBuild && (
+            <DetailRow id="engine-build" label={t("settings.engineBuildLabel")}>
+              {installedBuild}
+            </DetailRow>
+          )}
+          <DetailRow id="engine-updates" label={t("settings.aboutUpdatesLabel")}>
+            <span className={hasEngineUpdate || engineStatus?.needs_newer_launcher ? "text-warning-text" : undefined}>
+              {engineUpdateText}
+            </span>
+          </DetailRow>
+          {engineUpdating && engineProgress && (
+            <div className="pb-2 pt-0.5">
+              <ProgressBar aria-label={t("firstRunGate.downloadBar")} value={engineProgress.percent} color="primary" />
+            </div>
+          )}
+        </DetailsCard>
+        <div className="flex flex-wrap items-center gap-2">
+          {hasEngineUpdate && !engineStatus?.needs_newer_launcher && (
+            <Button
+              variant="primary"
+              mode="filled"
+              size="xsmall"
+              isLoading={engineUpdating}
+              onClick={() => void startEngineUpdate()}
+            >
+              {t("engineUpdate.updateNow")}
+            </Button>
+          )}
+          <Button
+            variant="neutral"
+            mode="stroke"
+            size="xsmall"
+            isLoading={engineChecking}
+            disabled={engineUpdating}
+            onClick={() => void checkEngineUpdate({ silent: false })}
+          >
+            {t("settings.engineCheckUpdates")}
+          </Button>
+          {engineStatus?.installed && !engineStatus.needs_newer_launcher && (
+            <Button
+              variant="neutral"
+              mode="ghost"
+              size="xsmall"
+              disabled={engineUpdating || engineChecking}
+              onClick={() => void confirmReinstallEngine()}
+            >
+              {t("settings.engineReinstall")}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

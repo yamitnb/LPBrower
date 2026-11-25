@@ -89,6 +89,20 @@ export type RtStatus = {
   install_error: RtInstallError | null;
   /** The update is downloaded and checked; only the swap is left. */
   update_staged: boolean;
+  /** Chromium version installed on disk. */
+  installed_chromium_version?: string | null;
+  /** Engine build number installed on disk. */
+  installed_engine_build?: string | null;
+  /** Latest Chromium version published in runtime.json. */
+  remote_chromium_version?: string | null;
+  /** Latest engine build number published in runtime.json. */
+  remote_engine_build?: string | null;
+  /** True when the remote fingerprint library archive has a newer etag. */
+  fingerprints_update_available?: boolean;
+  /** True when this status includes a remote manifest check. */
+  remote_checked?: boolean;
+  /** True when runtime.json responded during the check. */
+  manifest_reachable?: boolean;
 };
 /** runtime.rs InstallError, also the `runtime:failed` payload (#122). */
 export type RtInstallError = {
@@ -108,7 +122,7 @@ export type RtInstallError = {
 export type RtFailed = RtInstallError & { update_staged: boolean };
 export type RtProgress = {
   label: string;
-  phase: "download" | "extract";
+  phase: "download" | "extract" | "branding";
   received: number;
   total: number;
   percent: number;
@@ -118,4 +132,15 @@ export type RtUpdate = {
   latest: string | null;
   update_available: boolean;
   release_url: string | null;
+};
+export type LauncherOffer = {
+  current: string;
+  version: string;
+  installable: boolean;
+  install_kind: "portable_exe" | "windows_installer" | "macos_app" | "manual";
+  asset_name: string | null;
+  asset_size: number | null;
+  release_notes: string | null;
+  release_url: string | null;
+  published_at: string | null;
 };

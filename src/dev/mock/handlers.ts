@@ -381,11 +381,19 @@ export const handlers: Record<string, Handler> = {
     return {
       installed: engineInstalled(), binary_path: `${DATA_ROOT}/engine/ShardX.app`, installed_browser_etag: engineDownloaded ? remoteEtag() : "e2f22d25", remote_browser_etag: remoteEtag(),
       update_available, spec: { browser: { key: "ShardX-Mac-arm64.zip", label: "macOS (Apple Silicon)" } },
-      fingerprints_installed: engineInstalled(), needs_newer_launcher: false, min_launcher_version: "2.0.1", launcher_version: "2.0.3",
+      fingerprints_installed: engineInstalled(), needs_newer_launcher: false, min_launcher_version: "2.0.1", launcher_version: "2.1.6",
       install_error: update_available || !engineInstalled() ? lastEngineError() : null,
       update_staged: update_available && engineIsStaged(),
+      installed_chromium_version: engineInstalled() ? "158.0.8127.36" : null,
+      installed_engine_build: engineInstalled() ? "4" : null,
+      remote_chromium_version: "158.0.8127.36",
+      remote_engine_build: "4",
+      fingerprints_update_available: false,
+      remote_checked: true,
+      manifest_reachable: true,
     };
   },
+  runtime_check_update: (_a, ctx) => handlers.runtime_status({}, ctx),
   runtime_install: async (_a, ctx) => {
     const step = (phase: "download" | "extract", received: number, percent: number) =>
       ctx.emit("runtime:progress", { label: "ShardX-Mac-arm64.zip", phase, received, total: 2e7, percent });
@@ -436,7 +444,10 @@ export const handlers: Record<string, Handler> = {
     ctx.emit("runtime:done");
     return handlers.runtime_status({}, ctx);
   },
-  launcher_update_check: () => ({ current: "2.0.3", latest: "2.0.3", update_available: false, release_url: "https://github.com/ProxyShard/LPBrower/releases/latest" }),
+  launcher_update_check: () => ({ current: "2.1.6", latest: "2.1.6", update_available: false, release_url: "https://github.com/yamitnb/LPBrower/releases/latest" }),
+  launcher_update_offer: () => null,
+  launcher_update_download: () => "2.1.6",
+  launcher_update_apply: () => null,
   host_platform: () => hostPlatform(),
   // `window.__shardxMockHostScreen = [w, h, dpr]` (or null: no monitor) stands in for the real one.
   host_screen: () => {

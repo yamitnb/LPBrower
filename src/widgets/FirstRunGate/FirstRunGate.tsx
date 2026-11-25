@@ -193,7 +193,9 @@ export function FirstRunGate({ children }: { children: ReactNode }) {
                 <div className="mb-1.5 text-left text-secondary tabular-nums text-text-soft-400">
                   {prog.phase === "download"
                     ? t("firstRunGate.progress", { progress: fmtBytesProgress(prog.received, prog.total) })
-                    : t("firstRunGate.extracting")}
+                    : prog.phase === "branding"
+                      ? t("firstRunGate.branding")
+                      : t("firstRunGate.extracting")}
                 </div>
                 <ProgressBar aria-label={t("firstRunGate.downloadBar")} value={prog.percent} color="primary" />
               </>

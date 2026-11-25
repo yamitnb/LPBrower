@@ -9,6 +9,7 @@ mod api;
 mod fingerprints;
 mod gpu_caps;
 mod launch;
+mod launcher_update;
 mod mcp_setup;
 mod migrate;
 mod process;
@@ -3484,8 +3485,12 @@ pub fn run() {
             cookies_import,
             mcp_download,
             runtime::runtime_status,
+            runtime::runtime_check_update,
             runtime::runtime_install,
             runtime::launcher_update_check,
+            launcher_update::launcher_update_offer,
+            launcher_update::launcher_update_download,
+            launcher_update::launcher_update_apply,
             reset::app_reset_plan,
             reset::app_reset,
             reset::app_reset_backup,
@@ -3581,6 +3586,12 @@ pub fn run() {
             // An engine update the launcher died in the middle of: the previous
             // engine is put back before the window asks for it (#122).
             runtime::recover_at_start();
+
+            // Clean up any `.exe.old` / `.app.old` leftover from a recent app self-update.
+            let pkg_ver = app.package_info().version.to_string();
+            tauri::async_runtime::spawn_blocking(move || {
+                launcher_update::cleanup_at_start(&pkg_ver);
+            });
 
             // A Delete all data that did not finish (a crash, a forced quit)
             // keeps the app locked, and nothing below writes into its folders:

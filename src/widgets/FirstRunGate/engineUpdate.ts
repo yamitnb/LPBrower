@@ -5,6 +5,7 @@ import { fmtBytes } from "../../shared/lib/format";
 import { confirmModal } from "../../shared/model/confirm";
 import { toast } from "../../shared/model/toast";
 import { useProfile } from "../../entities/profile";
+import { storeBus } from "../../shared/lib/storeBus";
 import type { RtFailed, RtInstallError, RtProgress, RtStatus } from "../../shared/types";
 
 /** Two sentences: no space after a full-width stop (Chinese "。"). */
@@ -34,13 +35,24 @@ export function reason(t: T, e: RtInstallError): string {
 /// An engine update that stopped with the previous engine kept (#122): the
 /// app opens on that engine and a banner over the pages says why.
 type EngineUpdate = {
+  status: RtStatus | null;
+  checking: boolean;
   error: RtInstallError | null;
   staged: boolean;
-  /** Try again from the banner is under way. */
+  /** An engine download/install/retry is under way. */
   retrying: boolean;
   progress: RtProgress | null;
+  dismissedTarget: string | null;
 };
-export const useEngineUpdate = create<EngineUpdate>(() => ({ error: null, staged: false, retrying: false, progress: null }));
+export const useEngineUpdate = create<EngineUpdate>(() => ({
+  status: null,
+  checking: false,
+  error: null,
+  staged: false,
+  retrying: false,
+  progress: null,
+  dismissedTarget: null,
+}));
 
 /** The stop with the engine kept that a status names, else null. */
 const stopIn = (s: RtStatus) => (s.installed && s.install_error?.engine_kept ? s.install_error : null);
@@ -51,6 +63,7 @@ let seen: string | null | undefined;
 /** A status read: the engine it names. */
 export function noteSeen(s: RtStatus): void {
   seen = s.installed_browser_etag;
+  useEngineUpdate.setState({ status: s });
 }
 
 /** The banner as a status leaves it: shown only while the engine it kept is there. */
@@ -58,6 +71,38 @@ export function noteStatus(s: RtStatus): void {
   noteSeen(s);
   const error = stopIn(s);
   useEngineUpdate.setState({ error, staged: !!error && s.update_staged });
+}
+
+/** Remote check for Core Chromium updates (always queries `runtime.json`). */
+export async function checkEngineUpdate(opts?: { silent?: boolean }): Promise<RtStatus | null> {
+  const silent = opts?.silent ?? false;
+  if (useEngineUpdate.getState().checking) return useEngineUpdate.getState().status;
+  useEngineUpdate.setState({ checking: true });
+  try {
+    const s = await invoke<RtStatus>("runtime_check_update");
+    noteStatus(s);
+    useEngineUpdate.setState({ checking: false });
+    if (!silent) {
+      if (!s.manifest_reachable) {
+        toast.fail({ title: t("engineUpdate.checkFailed") });
+      } else if (s.needs_newer_launcher) {
+        toast.info(t("engineUpdate.needsNewerLauncher", { v: s.min_launcher_version ?? "" }));
+      } else if (!s.update_available && !s.fingerprints_update_available && s.installed) {
+        toast.ok(t("engineUpdate.upToDate"));
+      }
+    }
+    return s;
+  } catch (e) {
+    useEngineUpdate.setState({ checking: false });
+    if (!silent) toast.fail({ title: t("engineUpdate.checkFailed"), detail: e });
+    return null;
+  }
+}
+
+export function dismissEngineUpdate(): void {
+  const s = useEngineUpdate.getState().status;
+  const key = s?.remote_chromium_version ?? s?.remote_browser_etag ?? null;
+  if (key) useEngineUpdate.setState({ dismissedTarget: key });
 }
 
 // What the install call under way was told by event. Its status reads the
@@ -73,16 +118,16 @@ export function noteFailed(e: RtFailed): void {
 /** runtime_install, and what it came to: the stop (its status's, else the one
  *  told), and whether a new engine went in. runtime:done says neither: it
  *  comes as well when the manifest could not be read and nothing was tried. */
-export async function installEngine(): Promise<{ status: RtStatus; stop: RtInstallError | null; moved: boolean }> {
+export async function installEngine(force = false): Promise<{ status: RtStatus; stop: RtInstallError | null; moved: boolean }> {
   told = null;
   const before = seen;
-  const status = await invoke<RtStatus>("runtime_install", { force: false });
+  const status = await invoke<RtStatus>("runtime_install", { force });
   // Set by the event while the call ran.
   const heard = told as RtInstallError | null;
   const stop = stopIn(status) ?? (heard?.engine_kept ? heard : null);
   if (stop === stopIn(status)) noteStatus(status);
   else noteSeen(status);
-  return { status, stop, moved: before !== undefined && status.installed_browser_etag !== before };
+  return { status, stop, moved: force || (before !== undefined && status.installed_browser_etag !== before) };
 }
 
 /** Stops a new try at start would meet again: tried again by hand only. */
@@ -107,6 +152,49 @@ export async function stopAndFinish(): Promise<void> {
   if (ok) await useProfile.getState().stopMany(ids);
 }
 
+/** User-initiated engine update or reinstall (from Settings -> About or banner).
+ *  Stops running profiles after confirmation so the engine swap succeeds cleanly. */
+export async function startEngineUpdate(opts?: { force?: boolean }): Promise<void> {
+  const force = opts?.force ?? false;
+  if (useEngineUpdate.getState().retrying) return;
+
+  const profiles = useProfile.getState();
+  const runningIds = Object.keys(profiles.running).filter((id) => profiles.running[id]);
+  if (runningIds.length > 0) {
+    const ok = await confirmModal({
+      title: t("engineUpdate.stopTitle"),
+      message: t("engineUpdate.stopHelp"),
+      items: profiles.profiles.filter((p) => runningIds.includes(p.id)).map((p) => ({ label: p.name })),
+      confirmLabel: t("extensions.stopConfirm"),
+    });
+    if (!ok) return;
+    const stillRunning = await useProfile.getState().stopMany(runningIds);
+    if (stillRunning.length > 0) {
+      toast.fail({ title: t("engineUpdate.failed"), detail: t("engineUpdate.busyOne") });
+      return;
+    }
+    // Brief pause for Windows file handles on chrome.dll to release cleanly.
+    await new Promise((r) => setTimeout(r, 700));
+  }
+
+  useEngineUpdate.setState({ retrying: true, progress: null });
+  try {
+    const r = await installEngine(force);
+    if (r.stop) {
+      toast.fail({ title: t("engineUpdate.failed"), detail: reason(t, r.stop) });
+    } else if (r.moved || r.status.installed) {
+      storeBus.emit("fingerprints");
+      toast.ok(t("engineUpdate.done"));
+    } else if (r.status.update_available || r.status.remote_browser_etag === null) {
+      toast.fail({ title: t("engineUpdate.failed"), detail: t("engineUpdate.download") });
+    }
+  } catch (e) {
+    toast.fail({ title: t("engineUpdate.failed"), detail: e });
+  } finally {
+    useEngineUpdate.setState({ retrying: false, progress: null });
+  }
+}
+
 /** Try again: at once when the update is staged, else downloaded first, its
  *  progress in the banner. `quiet`: a try nobody pressed reports no failure. */
 export async function retryEngineUpdate(quiet = false): Promise<void> {
@@ -114,7 +202,7 @@ export async function retryEngineUpdate(quiet = false): Promise<void> {
   if (was.retrying) return;
   useEngineUpdate.setState({ retrying: true, progress: null });
   try {
-    const r = await installEngine();
+    const r = await installEngine(false);
     if (r.stop) {
       // The same stop again changes nothing on screen: a toast says it was tried.
       if (!quiet && r.stop.stage === was.error?.stage) toast.fail({ title: t("engineUpdate.failed"), detail: reason(t, r.stop) });

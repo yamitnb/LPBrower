@@ -1,6 +1,6 @@
 [package]
 name = "shardbrowser-launcher"
-version = "2.1.5"
+version = "2.1.6"
 description = "LPBrower Launcher"
 authors = ["LPBrower"]
 edition = "2021"

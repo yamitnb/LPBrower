@@ -6,6 +6,7 @@ import { ChevronRightIcon, LockedIcon, StarOutlineIcon } from "../../shared/icon
 import { SelectField } from "../../shared/ui/SelectField";
 import { useWhatsNew } from "../../shared/model/whatsNew";
 import { takeTheTour } from "../../features/tour";
+import { askLauncherUpdate } from "../../features/launcher-update";
 import { useOnboarding } from "../../features/onboarding";
 import type { RtUpdate } from "../../shared/types";
 import { withUtm } from "../../shared/lib/utils";
@@ -298,12 +299,12 @@ export function WhatsNewDialog() {
         // reached only by the open, never by Tab (MP4 review, I1).
         className="-mx-2 -my-1.5 flex max-h-[calc(var(--viewport-h)*0.7)] flex-col gap-3 overflow-y-auto px-2 py-1.5 outline-hidden"
       >
-        {update?.update_available && update.release_url && (
+        {update?.update_available && (
           <Button
             mode="link"
             size="2xsmall"
             className="self-start"
-            onClick={() => openUrl(update.release_url!).catch(() => {})}
+            onClick={() => void askLauncherUpdate()}
           >
             {t("sidebar.updateStatus", { v: update.latest ?? "" })}
           </Button>
