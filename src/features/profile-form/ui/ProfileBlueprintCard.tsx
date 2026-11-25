@@ -10,6 +10,7 @@ import { HOST_OS } from "../../../shared/lib/utils";
 import { AUTO_LANG, AUTO_TZ, osIdFor } from "../../../shared/constants";
 import { useProfile } from "../../../entities/profile";
 import { CountryFlag } from "../../../shared/ui/CountryFlag";
+import { TaskbarTitleBadge } from "../../../shared/ui/TaskbarTitleBadge";
 import { randomizeFingerprint, type ProfileFormDraft } from "../model/useProfileForm";
 
 const OS_META: Record<string, { label: string; icon: typeof WindowsOsIcon }> = {
@@ -125,13 +126,12 @@ export function ProfileBlueprintCard({
             {f.taskbar_title?.trim() && (
               <>
                 <span aria-hidden="true">·</span>
-                <span
+                <TaskbarTitleBadge
+                  value={f.taskbar_title.trim()}
+                  color={f.color}
                   title={`Nhãn Taskbar: ${f.taskbar_title.trim()}`}
-                  style={f.color ? { backgroundColor: f.color } : undefined}
-                  className="inline-flex max-w-[96px] items-center truncate rounded-full bg-primary-base px-2 py-0.5 text-[10px] font-bold text-white"
-                >
-                  {f.taskbar_title.trim()}
-                </span>
+                  size="sm"
+                />
               </>
             )}
           </div>

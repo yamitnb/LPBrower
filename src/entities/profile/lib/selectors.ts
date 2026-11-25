@@ -5,7 +5,7 @@ import { applyProfileFilters, emptyFilters, folderNamesOf, makeProfileFilter, ty
 import type { ProfileMeta } from "../model/types";
 import { useProfile } from "./useProfile";
 import { useProfileUi } from "./useProfileUi";
-import { layoutColumns, type ColumnsApi, type TableLayout } from "../../../shared/lib/tableColumns";
+import { type ColumnsApi, type TableLayout } from "../../../shared/lib/tableColumns";
 import { SELECT_TRACK } from "../../../shared/lib/selectionMode";
 import { rowActionsCoverPx } from "../../../shared/ui/RowHoverActions";
 import { PROFILE_COLUMNS, PROFILE_EDITABLE, PROFILE_FLOATING_ACTIONS, PROFILE_TABLE, type ProfileColumnId } from "./columns";
@@ -238,47 +238,68 @@ export function useSizingRows(): ProfileMeta[] {
   }, [profiles, proxies, folder, filters, running, tags, byProfile]);
 }
 
-/// The Profiles list's columns and their grid (owner feature 2026-09-26):
-/// every chosen column, less Folder inside one Folder (its column would
-/// repeat the page title; a View keeps it), each as wide as a person made
-/// it or else as its content needs (owner, 2026-09-30). The list and the
-/// Display menu read the same layout, so the "Hidden inside a Folder" note
-/// never disagrees with the list. Too wide for the list, the columns no one
-/// sized give way first; its width also decides whether Name stays pinned
-/// while it scrolls sideways.
+/// Fixed-column layout for the Profiles list: every column stays in its
+/// canonical order at a fixed pixel width (never shifting on content edits,
+/// status changes, or folder switches), while Notes fills remaining space.
 export function useProfileLayout(): TableLayout<ProfileColumnId> {
   const columns = useProfileUi((s) => s.columns);
-  const widths = useProfileUi((s) => s.widths);
-  const auto = useProfileUi((s) => s.autoWidths);
-  const full = useProfileUi((s) => s.fullWidths);
-  const floor = useProfileUi((s) => s.floorWidths);
   const available = useProfileUi((s) => s.listWidth);
   const inFolder = useProfileUi((s) => s.folder !== "all" && s.viewId === null);
-  // Tags holds 96 to 190 px before any tag exists (CRAFT-14): chosen, but left
-  // out until the first tag is made.
   const noTags = useTags((s) => s.tags.length === 0);
-  // The row actions as wide as their words need in this language.
   const tail = useActionsTail((s) => s.tail);
-  return useMemo(
-    () => layoutColumns(PROFILE_COLUMNS, columns, widths, {
-      ...PROFILE_TABLE,
-      tail,
-      leadTrack: SELECT_TRACK,
-      available,
-      auto,
-      full,
-      floor,
-      exclude: [...(inFolder ? ["folder" as const] : []), ...(noTags ? ["tags" as const] : [])],
-      // The row actions float over the last column (the owner's choice);
-      // when the column before it has an edit button, the last one is at
-      // least as wide as they are, so they never cover that button.
-      lastFloor: (_last, prev) =>
-        prev !== undefined && PROFILE_EDITABLE.has(prev)
-          ? rowActionsCoverPx(PROFILE_FLOATING_ACTIONS) - PROFILE_TABLE.gap
-          : 0,
-    }),
-    [columns, widths, auto, full, floor, available, inFolder, noTags, tail],
-  );
+  return useMemo(() => {
+    const exclude: ProfileColumnId[] = [
+      ...(inFolder ? ["folder" as const] : []),
+      ...(noTags ? ["tags" as const] : []),
+    ];
+    const wanted = PROFILE_COLUMNS.map((d) => d.id).filter((id) => !columns.hidden.includes(id));
+    const excluded = wanted.filter((id) => exclude.includes(id));
+    const shown = wanted.filter((id) => !exclude.includes(id));
+    const byId = new Map(PROFILE_COLUMNS.map((d) => [d.id, d]));
+
+    const { lead, gap, padding } = PROFILE_TABLE;
+    const leadRoom = lead > 0 ? lead + gap : 0;
+    const frame = leadRoom + tail + shown.length * gap + padding;
+
+    const px = shown.map((id, i) => {
+      const def = byId.get(id)!;
+      const prev = shown[i - 1];
+      const minLast = i === shown.length - 1 && prev !== undefined && PROFILE_EDITABLE.has(prev)
+        ? Math.ceil(rowActionsCoverPx(PROFILE_FLOATING_ACTIONS) - gap)
+        : 0;
+      return Math.max(def.need, minLast);
+    });
+
+    const fillIdx = shown.findIndex((id) => byId.get(id)!.fill);
+    const minWidth = frame + px.reduce((s, n) => s + n, 0);
+    const extra = available !== null && available > minWidth ? available - minWidth : 0;
+
+    const tracks = shown.map((_id, i) => (i === fillIdx ? `minmax(${px[i]}px,1fr)` : `${px[i]}px`));
+    const drawn = shown.map((_id, i) => (i === fillIdx ? px[i] + extra : px[i]));
+    const tailTrack = fillIdx >= 0 ? `${tail}px` : `minmax(${tail}px,1fr)`;
+
+    const start = padding / 2 + leadRoom;
+    const name = (px[0] ?? 0) + gap;
+    const end = tail + padding / 2;
+    const pinFirst = available === null || minWidth <= available || available - (start + name + end) >= 160;
+    const byShown = <T,>(v: readonly T[]) => Object.fromEntries(shown.map((id, i) => [id, v[i]])) as Partial<Record<ProfileColumnId, T>>;
+
+    const layout: TableLayout<ProfileColumnId> = {
+      shown,
+      excluded,
+      shortened: [],
+      template: [...(lead > 0 ? [SELECT_TRACK] : []), ...tracks, tailTrack].join(" "),
+      minWidth,
+      pinFirst,
+      pinStart: start + (pinFirst ? name : 0),
+      pinEnd: end,
+      drawn: byShown(drawn),
+      tracks: byShown(tracks),
+      stretched: false,
+      resize: () => ({ widths: {}, layout }),
+    };
+    return layout;
+  }, [columns, available, inFolder, noTags, tail]);
 }
 
 /** The Profiles columns for the list header's menus and gestures. */

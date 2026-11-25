@@ -9,6 +9,7 @@ import { labelNames } from "../../../shared/ui/ColorRadios";
 import { PropertyButton, PropertyRow, PropertyValue as Value } from "../../../shared/ui/peek";
 import { ProtocolPill } from "../../../shared/ui/ProtocolPill";
 import { TagChip } from "../../../shared/ui/TagChip";
+import { TaskbarTitleBadge } from "../../../shared/ui/TaskbarTitleBadge";
 import { useT } from "../../../shared/i18n";
 import { isProtected, openElsewhere, proxyHidden, proxyMissing, useFolderLook, useProfile, type ProfileForm, type ProfileMeta, type ProfileRight } from "../../../entities/profile";
 import { rightName } from "../../../entities/space";
@@ -58,12 +59,7 @@ function TaskbarTitleDetail({ value, color }: { value: string; color: string }) 
     <PropertyRow id="taskbar-title" label={t("peek.taskbarTitle") || "Taskbar Title"}>
       {() => (
         <Value>
-          <span
-            style={color ? { backgroundColor: color } : undefined}
-            className="inline-flex max-w-[140px] items-center truncate rounded-full bg-primary-base px-2 py-0.5 text-[11px] font-bold text-white"
-          >
-            {value}
-          </span>
+          <TaskbarTitleBadge value={value} color={color} size="md" />
         </Value>
       )}
     </PropertyRow>

@@ -40,20 +40,18 @@ export type ProfileColumnWidths = ColumnWidths<ProfileColumnId>;
 // list sideways. The least Name gives way to moves 4 px; nothing at the
 // default window changes.
 export const PROFILE_COLUMNS: readonly ColumnDef<ProfileColumnId>[] = [
-  { id: "name", title: (t) => t("profileTable.colName"), need: 150, min: 116, max: 640, shown: true, hideable: false, movable: false },
-  { id: "status", title: (t) => t("profileTable.colStatus"), need: 96, min: 96, max: 240, grow: 24, shown: true, hideable: false, movable: true },
-  { id: "folder", title: (t) => t("profileTable.colFolder"), need: 110, min: 72, max: 320, shown: true, hideable: true, movable: true },
-  { id: "tags", title: (t) => t("profileTable.colTags"), need: 96, min: 64, max: 480, shown: true, hideable: true, movable: true },
-  { id: "proxy", title: (t) => t("profileTable.colProxy"), need: 110, min: 80, max: 480, shown: true, hideable: false, movable: true },
-  // New with the owner feature (2026-09-26): hidden until chosen, placed
-  // before Notes (Notes stays last: the row actions float over it). Run
-  // time is wide enough for "1234 小时 59 分钟".
-  { id: "lastRun", title: (t) => t("profileTable.colLastRun"), need: 96, min: 72, max: 240, grow: 24, shown: false, hideable: true, movable: true },
-  { id: "created", title: (t) => t("profileTable.colCreated"), need: 96, min: 72, max: 240, grow: 24, shown: false, hideable: true, movable: true },
-  { id: "runTime", title: (t) => t("profileTable.colRunTime"), need: 112, min: 72, max: 240, grow: 24, shown: false, hideable: true, movable: true },
-  { id: "device", title: (t) => t("profileTable.colDevice"), need: 80, min: 64, max: 200, grow: 24, shown: false, hideable: true, movable: true },
-  { id: "extensions", title: (t) => t("profileTable.colExtensions"), need: 84, min: 64, max: 200, grow: 24, shown: false, hideable: true, movable: true },
-  { id: "notes", title: (t) => t("profileTable.colNotes"), need: 100, fill: true, min: 64, max: 640, shown: true, hideable: true, movable: true },
+  { id: "name", title: (t) => t("profileTable.colName"), need: 168, min: 168, max: 640, shown: true, hideable: false, movable: false },
+  { id: "status", title: (t) => t("profileTable.colStatus"), need: 124, min: 124, max: 240, grow: 24, shown: true, hideable: false, movable: true },
+  { id: "folder", title: (t) => t("profileTable.colFolder"), need: 108, min: 108, max: 320, shown: true, hideable: true, movable: true },
+  { id: "tags", title: (t) => t("profileTable.colTags"), need: 128, min: 128, max: 480, shown: true, hideable: true, movable: true },
+  { id: "proxy", title: (t) => t("profileTable.colProxy"), need: 186, min: 186, max: 480, shown: true, hideable: false, movable: true },
+  // Optional columns toggled from Display / Columns menu (fixed widths & canonical order).
+  { id: "lastRun", title: (t) => t("profileTable.colLastRun"), need: 116, min: 116, max: 240, grow: 24, shown: false, hideable: true, movable: true },
+  { id: "created", title: (t) => t("profileTable.colCreated"), need: 116, min: 116, max: 240, grow: 24, shown: false, hideable: true, movable: true },
+  { id: "runTime", title: (t) => t("profileTable.colRunTime"), need: 116, min: 116, max: 240, grow: 24, shown: false, hideable: true, movable: true },
+  { id: "device", title: (t) => t("profileTable.colDevice"), need: 92, min: 92, max: 200, grow: 24, shown: false, hideable: true, movable: true },
+  { id: "extensions", title: (t) => t("profileTable.colExtensions"), need: 104, min: 104, max: 200, grow: 24, shown: false, hideable: true, movable: true },
+  { id: "notes", title: (t) => t("profileTable.colNotes"), need: 136, fill: true, min: 136, max: 640, shown: true, hideable: true, movable: true },
 ];
 
 export const PROFILE_COLUMN = Object.fromEntries(PROFILE_COLUMNS.map((d) => [d.id, d])) as Record<ProfileColumnId, ColumnDef<ProfileColumnId>>;
@@ -89,12 +87,13 @@ export function readProfileColumns(raw: unknown): ProfileColumns {
   return defaultSet(PROFILE_COLUMNS);
 }
 
-/** The list's own columns and widths: the stored layout, else the old booleans, else the defaults. */
+/** The list's own columns and widths: canonical fixed order and fixed widths; only hidden toggles persist. */
 export function loadProfileLayout(): { columns: ProfileColumns; widths: ProfileColumnWidths } {
+  const canonicalOrder = PROFILE_COLUMNS.map((d) => d.id);
   const now = fromStored(PROFILE_COLUMNS, parse(LAYOUT_KEY));
-  if (now) return { columns: now.set, widths: now.widths };
+  if (now) return { columns: { order: canonicalOrder, hidden: now.set.hidden }, widths: {} };
   const old = parse(OLD_KEY);
-  if (old && typeof old === "object") return { columns: fromOldColumns(old), widths: {} };
+  if (old && typeof old === "object") return { columns: { order: canonicalOrder, hidden: fromOldColumns(old).hidden }, widths: {} };
   return { columns: defaultSet(PROFILE_COLUMNS), widths: {} };
 }
 

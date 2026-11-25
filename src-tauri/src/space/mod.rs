@@ -37,7 +37,7 @@ pub const NOT_IN_TEAM: &str = "not offered in a team space";
 pub const TEAM_NOT_YET: &str = "not offered for a team's profiles yet";
 /// Why a switch is refused.
 pub const SWITCH_WHILE_STARTING: &str = "a profile is starting: switch spaces once it has started";
-pub const SWITCH_WHILE_MOVING: &str = "ShardBrowser is moving or resetting its data: switch spaces when that finishes";
+pub const SWITCH_WHILE_MOVING: &str = "LPBrower is moving or resetting its data: switch spaces when that finishes";
 /// Why a launch is refused while the space changes.
 pub const LAUNCH_WHILE_SWITCHING: &str = "the launcher is switching spaces: start the profile again in a moment";
 

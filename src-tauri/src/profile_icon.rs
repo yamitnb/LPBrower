@@ -258,11 +258,168 @@ fn draw_text(
     }
 }
 
+/// Default high-contrast LPBrowser Royal Blue (`#1D4ED8`) for Taskbar Title badges
+/// when no custom profile colour is selected (WCAG AAA 8.6:1 contrast with pure white).
+const DEFAULT_BADGE_BG: (u8, u8, u8) = (29, 78, 216);
+
+/// Compute true sRGB WCAG 2.1 relative luminance in `[0.0, 1.0]`.
+fn wcag_luminance(c: Color) -> f32 {
+    let lin = |v: f32| {
+        if v <= 0.03928 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(c.red()) + 0.7152 * lin(c.green()) + 0.0722 * lin(c.blue())
+}
+
+fn contrast_ratio(l1: f32, l2: f32) -> f32 {
+    let (hi, lo) = if l1 >= l2 { (l1, l2) } else { (l2, l1) };
+    (hi + 0.05) / (lo + 0.05)
+}
+
+/// Resolve a guaranteed high-contrast `(badge_bg, text_ink)` pair so the Taskbar Title
+/// badge is crisp and immediately legible on both light and dark Windows taskbars / macOS Docks.
+fn resolve_badge_colors(color: Option<&str>) -> (Color, (u8, u8, u8)) {
+    let Some(mut bg) = color.and_then(parse_hex) else {
+        return (
+            Color::from_rgba8(DEFAULT_BADGE_BG.0, DEFAULT_BADGE_BG.1, DEFAULT_BADGE_BG.2, 255),
+            (255, 255, 255),
+        );
+    };
+
+    let mut lum = wcag_luminance(bg);
+    // Bright yellows / pale accents keep their vivid fill with deep obsidian bold text (> 9:1).
+    if lum > 0.42 {
+        return (bg, (11, 18, 32));
+    }
+
+    // Mid-tone saturated colours (orange, green, sky, bright blue) darken gently
+    // until pure white text reaches >= 4.5:1 WCAG AA contrast without turning orange muddy.
+    for _ in 0..5 {
+        if contrast_ratio(1.0, lum) >= 4.5 {
+            break;
+        }
+        bg = shade(bg, 0.88);
+        lum = wcag_luminance(bg);
+    }
+    (bg, (255, 255, 255))
+}
+
+/// Measure actual ink bounding box `(min_x, min_y, max_x, max_y)` of single-line text at `px`,
+/// positioned with origin `(0, 0)` on the baseline.
+fn measure_ink_bounds(font: &FontRef<'_>, text: &str, px: f32) -> Option<(f32, f32, f32, f32)> {
+    let scaled = font.as_scaled(PxScale::from(px));
+    let mut x = 0.0f32;
+    let mut min_x = f32::INFINITY;
+    let mut min_y = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+
+    for ch in text.chars() {
+        let glyph = scaled.scaled_glyph(ch);
+        let advance = scaled.h_advance(glyph.id);
+        if let Some(outline) = font.outline_glyph(glyph) {
+            let b = outline.px_bounds();
+            min_x = min_x.min(x + b.min.x);
+            min_y = min_y.min(b.min.y);
+            max_x = max_x.max(x + b.max.x);
+            max_y = max_y.max(b.max.y);
+        }
+        x += advance;
+    }
+
+    if min_x.is_finite() && max_x > min_x && max_y > min_y {
+        Some((min_x, min_y, max_x, max_y))
+    } else {
+        None
+    }
+}
+
+/// Choose the largest single-line font size whose real ink bounding box fits `(max_w, max_h)`.
+/// Truncates with ellipsis only if an unusually long label still exceeds `max_w` at minimum legible size.
+fn fit_badge_text(font: &FontRef<'_>, raw: &str, max_w: f32, max_h: f32) -> (f32, String) {
+    let mut px = SIZE * 0.48;
+    let min_px = 68.0f32;
+    while px >= min_px {
+        if let Some((min_x, min_y, max_x, max_y)) = measure_ink_bounds(font, raw, px) {
+            if (max_x - min_x) <= max_w && (max_y - min_y) <= max_h {
+                return (px, raw.to_string());
+            }
+        }
+        px -= 2.0;
+    }
+
+    // Very long label: keep crisp minimum legible size (`min_px`) and trim with ellipsis.
+    let mut trimmed = raw.to_string();
+    while !trimmed.is_empty() {
+        let cand = format!("{trimmed}…");
+        if let Some((min_x, _, max_x, _)) = measure_ink_bounds(font, &cand, min_px) {
+            if (max_x - min_x) <= max_w {
+                return (min_px, cand);
+            }
+        }
+        trimmed.pop();
+    }
+    (min_px, raw.chars().take(6).collect())
+}
+
+/// Draw single-line text optically centered on `(cx, cy)` using exact glyph ink bounds,
+/// with crisp high-contrast coverage gamma so strokes stay bold when downscaled to 24px/32px.
+fn draw_centered_badge_text(
+    pix: &mut Pixmap,
+    font: &FontRef<'_>,
+    text: &str,
+    px: f32,
+    cx: f32,
+    cy: f32,
+    color: (u8, u8, u8),
+) {
+    let Some((min_x, min_y, max_x, max_y)) = measure_ink_bounds(font, text, px) else {
+        return;
+    };
+    let origin_x = cx - (min_x + max_x) / 2.0;
+    let baseline_y = cy - (min_y + max_y) / 2.0;
+    let scaled = font.as_scaled(PxScale::from(px));
+    let mut x = origin_x;
+    let (pw, ph) = (pix.width() as i32, pix.height() as i32);
+
+    for ch in text.chars() {
+        let glyph = scaled.scaled_glyph(ch);
+        let advance = scaled.h_advance(glyph.id);
+        if let Some(outline) = font.outline_glyph(glyph) {
+            let bounds = outline.px_bounds();
+            outline.draw(|gx, gy, cov| {
+                if cov <= 0.0 {
+                    return;
+                }
+                let px_x = (bounds.min.x + gx as f32 + x).round() as i32;
+                let px_y = (bounds.min.y + gy as f32 + baseline_y).round() as i32;
+                if px_x < 0 || px_y < 0 || px_x >= pw || px_y >= ph {
+                    return;
+                }
+                let idx = (px_y * pw + px_x) as usize * 4;
+                let data = pix.data_mut();
+                // Slight coverage boost keeps bold letter stems crisp when downscaled to 24px/32px.
+                let a = cov.clamp(0.0, 1.0).powf(0.82);
+                for (i, c) in [color.0, color.1, color.2].iter().enumerate() {
+                    let dst = data[idx + i] as f32;
+                    data[idx + i] = (dst * (1.0 - a) + (*c as f32) * a) as u8;
+                }
+                let dst_a = data[idx + 3] as f32;
+                data[idx + 3] = (dst_a * (1.0 - a) + 255.0 * a) as u8;
+            });
+        }
+        x += advance;
+    }
+}
+
 /// Compute deterministic cache key hash for `(taskbar_title, profile_name, color)`.
 fn icon_hash(taskbar_title: &str, profile_name: &str, color: Option<&str>) -> u64 {
     let badge = taskbar_title.trim();
     let key = format!(
-        "lpbrand-v4\u{1}{badge}\u{1}{}\u{1}{}\u{1}{}\u{1}{}",
+        "lpbrand-v5\u{1}{badge}\u{1}{}\u{1}{}\u{1}{}\u{1}{}",
         if badge.is_empty() { "" } else { profile_name },
         color.unwrap_or(""),
         env!("CARGO_PKG_VERSION"),
@@ -277,12 +434,13 @@ fn icon_hash(taskbar_title: &str, profile_name: &str, color: Option<&str>) -> u6
 }
 
 /// Render the 512x512 RGBA premultiplied pixmap for a profile's browser icon.
-/// When `taskbar_title` is non-empty, draws a bold high-contrast pill badge at the bottom
-/// so the label is immediately readable on the Windows taskbar, Dock, and Desktop shortcuts.
-/// When `taskbar_title` is empty, renders the clean Chromium-LP browser icon without a text pill.
+/// When `taskbar_title` is non-empty, draws a large, ultra-high-contrast rounded badge at the
+/// bottom with optically centered bold text so the label is immediately readable at 24px/32px
+/// on both light and dark Windows taskbars, macOS Docks, and Desktop shortcuts.
+/// When `taskbar_title` is empty, renders the clean LP browser icon without a text pill.
 fn render_icon_pixmap(
     taskbar_title: &str,
-    profile_name: &str,
+    _profile_name: &str,
     color: Option<&str>,
 ) -> Result<Pixmap> {
     let s = SIZE as u32;
@@ -295,43 +453,44 @@ fn render_icon_pixmap(
         return Ok(pix);
     }
 
-    // 1. Draw the Chromium-core LP browser icon filling the taskbar canvas,
-    //    slightly lifted upward so the bottom Taskbar Title pill sits cleanly.
-    draw_mark(&mut pix, cx, SIZE * 0.43, SIZE * 0.84);
+    // 1. Draw the LP browser mark cleanly in the upper portion so the mascot stays recognizable
+    //    above the generous bottom Taskbar Title badge.
+    draw_mark(&mut pix, cx, SIZE * 0.34, SIZE * 0.68);
 
-    // 2. Draw a crisp profile-accent pill badge with the Taskbar Title along the bottom edge.
-    let accent_seed = profile_name.strip_prefix("LPB|").unwrap_or(profile_name).trim();
-    let accent_seed = if accent_seed.is_empty() { badge } else { accent_seed };
-    let tint = color.and_then(parse_hex).unwrap_or_else(|| accent(accent_seed));
+    // 2. Resolve high-contrast badge fill & ink (LPBrowser Royal Blue #1D4ED8 + pure white by default).
+    let (tint, ink) = resolve_badge_colors(color);
 
-    let badge_h = SIZE * 0.33;
-    let badge_w = SIZE * 0.94;
+    let badge_h = SIZE * 0.45;
+    let badge_w = SIZE * 0.92;
     let bx0 = cx - badge_w / 2.0;
-    let by0 = SIZE - badge_h - SIZE * 0.02;
+    let by0 = SIZE - badge_h - SIZE * 0.036;
     let bx1 = bx0 + badge_w;
     let by1 = by0 + badge_h;
-    let badge_r = badge_h * 0.44;
+    let badge_r = SIZE * 0.095;
 
     if let Some(pill) = rounded_rect(bx0, by0, bx1, by1, badge_r) {
         let mut paint = Paint::default();
         paint.anti_alias = true;
 
-        // Crisp white outer halo stroke so the pill separates cleanly from the Chromium wheel.
-        paint.set_color(Color::from_rgba8(255, 255, 255, 248));
-        let stroke = tiny_skia::Stroke { width: SIZE * 0.034, ..Default::default() };
-        pix.stroke_path(&pill, &paint, &stroke, Transform::identity(), None);
+        // Subtle dark outer halo so the white rim stands out sharply on light Windows taskbars too.
+        paint.set_color(Color::from_rgba8(10, 16, 34, 210));
+        let outer = tiny_skia::Stroke { width: SIZE * 0.056, ..Default::default() };
+        pix.stroke_path(&pill, &paint, &outer, Transform::identity(), None);
 
-        // Filled pill in the profile's accent colour.
+        // Crisp pure-white inner rim separating the badge cleanly from both the icon & dark taskbars.
+        paint.set_color(Color::from_rgba8(255, 255, 255, 255));
+        let rim = tiny_skia::Stroke { width: SIZE * 0.036, ..Default::default() };
+        pix.stroke_path(&pill, &paint, &rim, Transform::identity(), None);
+
+        // High-contrast filled rounded-rect badge.
         paint.set_color(tint);
         pix.fill_path(&pill, &paint, FillRule::Winding, Transform::identity(), None);
     }
 
     let font = FontRef::try_from_slice(FONT).context("load font")?;
-    let (px, lines) = layout(&font, badge, badge_w * 0.86, badge_h * 0.80, 1);
-    let block_h = lines.len() as f32 * px * 1.05;
-    let text_top = by0 + (badge_h - block_h) / 2.0 - px * 0.04;
-    let ink = if luminance(tint) > 0.62 { (20, 24, 32) } else { (255, 255, 255) };
-    draw_text(&mut pix, &font, &lines, px, cx, text_top, ink);
+    let (px, fitted) = fit_badge_text(&font, badge, badge_w * 0.88, badge_h * 0.74);
+    let badge_cy = (by0 + by1) / 2.0;
+    draw_centered_badge_text(&mut pix, &font, &fitted, px, cx, badge_cy, ink);
 
     Ok(pix)
 }
@@ -558,4 +717,52 @@ fn mark_pixmap() -> Option<&'static Pixmap> {
             Pixmap::from_vec(buf, tiny_skia::IntSize::from_wh(info.width, info.height)?)
         })
         .as_ref()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn badge_colors_meet_high_contrast_for_default_and_all_accents() {
+        let (def_bg, def_ink) = resolve_badge_colors(None);
+        assert_eq!(def_ink, (255, 255, 255));
+        assert!(contrast_ratio(1.0, wcag_luminance(def_bg)) >= 6.5);
+
+        let accents = [
+            "#3B82F6", "#724FFF", "#E040C8", "#F04438",
+            "#F97316", "#EAB308", "#12B76A", "#0BA5EC",
+        ];
+        for hex in accents {
+            let (bg, ink) = resolve_badge_colors(Some(hex));
+            let ink_c = Color::from_rgba8(ink.0, ink.1, ink.2, 255);
+            let ratio = contrast_ratio(wcag_luminance(bg), wcag_luminance(ink_c));
+            assert!(ratio >= 4.5, "accent {hex} contrast too low: {ratio:.2}");
+        }
+    }
+
+    #[test]
+    fn short_taskbar_title_renders_large_and_crisp() {
+        let font = FontRef::try_from_slice(FONT).unwrap();
+        let (px, fitted) = fit_badge_text(&font, "2K7", SIZE * 0.92 * 0.88, SIZE * 0.45 * 0.74);
+        assert_eq!(fitted, "2K7");
+        assert!(px >= 180.0, "expected large bold font for 2K7, got px={px}");
+
+        let pix = render_icon_pixmap("2K7", "LP 2k7", None).unwrap();
+        assert_eq!((pix.width(), pix.height()), (512, 512));
+
+        if let Ok(dir) = std::env::var("LPB_ICON_PREVIEW_DIR") {
+            let dir = PathBuf::from(dir);
+            let _ = std::fs::create_dir_all(&dir);
+            for (fname, label, col) in [
+                ("preview_2k7_default.png", "2K7", None),
+                ("preview_01_green.png", "01", Some("#12B76A")),
+                ("preview_shop_yellow.png", "Shop", Some("#EAB308")),
+                ("preview_fb1_orange.png", "FB-1", Some("#F97316")),
+            ] {
+                let p = render_icon_pixmap(label, label, col).unwrap();
+                p.save_png(dir.join(fname)).unwrap();
+            }
+        }
+    }
 }

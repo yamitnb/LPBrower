@@ -43,7 +43,7 @@ type Opened<Id extends string> = {
 /// so it keeps the list's keys, like a row checkbox (C6). A list wider than
 /// its card scrolls sideways under this row as its rows do: the select-all
 /// box, Name and the columns button stay pinned (`list-pin-*` in app.css).
-export function ListHeader<Id extends string>({ api, layout, listRef, wrapRef, lead, actionsLabel, excludedNote, sort, height = LIST_HEADER_HEIGHT }: {
+export function ListHeader<Id extends string>({ api, layout, listRef, wrapRef, lead, actionsLabel, excludedNote, sort, height = LIST_HEADER_HEIGHT, locked = false }: {
   api: ColumnsApi<Id>;
   layout: TableLayout<Id>;
   /** The list's scroll box: a live resize sets its column variables. */
@@ -60,6 +60,8 @@ export function ListHeader<Id extends string>({ api, layout, listRef, wrapRef, l
   /** Px. A list whose header was shorter before Phase B keeps that (the
    *  Trash's 27, owner: nothing grows); the 24 px Columns button fits. */
   height?: number;
+  /** Lock column order and widths (no drag-to-reorder or edge-resizing). */
+  locked?: boolean;
 }) {
   const t = useT();
   const uid = useId();
@@ -177,13 +179,13 @@ export function ListHeader<Id extends string>({ api, layout, listRef, wrapRef, l
   const itemsFor = (column: Id | null): MenuItem[] => {
     const out: MenuItem[] = [];
     if (column !== null) {
-      if (byId.get(column)!.movable) {
+      if (!locked && byId.get(column)!.movable) {
         out.push(
           { label: t("tableColumns.moveLeft"), icon: <MoveLeftIcon className="size-3.5" />, disabled: !moveBy(api.defs, api.set, column, -1, layout.shown), onSelect: () => move(column, -1) },
           { label: t("tableColumns.moveRight"), icon: <MoveRightIcon className="size-3.5" />, disabled: !moveBy(api.defs, api.set, column, 1, layout.shown), onSelect: () => move(column, 1) },
         );
       }
-      if (api.widths[column] !== undefined) {
+      if (!locked && api.widths[column] !== undefined) {
         out.push({ label: t("tableColumns.resetWidth"), icon: <RefreshIcon className="size-3.5" />, onSelect: () => api.setWidth(column, null) });
       }
       const orders = sort?.items(column) ?? [];
@@ -273,11 +275,11 @@ export function ListHeader<Id extends string>({ api, layout, listRef, wrapRef, l
               aria-sort={dir}
               // Named by its title alone: the edge inside it has its own name.
               aria-labelledby={`${uid}-${id}`}
-              onPointerDown={byId.get(id)!.movable ? (e) => drag.start(e, id, titleOf(id)) : undefined}
+              onPointerDown={!locked && byId.get(id)!.movable ? (e) => drag.start(e, id, titleOf(id)) : undefined}
               className={cn(
                 "relative flex h-full min-w-0 items-center gap-1",
-                // Name can't move: it stays pinned while the list scrolls sideways.
-                byId.get(id)!.movable ? "cursor-grab" : "list-pin-name",
+                // Name stays pinned while the list scrolls sideways; locked lists use a neutral cursor on all other columns.
+                !byId.get(id)!.movable ? "list-pin-name" : locked ? "cursor-default" : "cursor-grab",
                 drag.dragging === id && "opacity-50",
               )}
             >
@@ -290,31 +292,28 @@ export function ListHeader<Id extends string>({ api, layout, listRef, wrapRef, l
                   {dir === "ascending" ? <SortAscIcon className="size-3.5" /> : <SortDescIcon className="size-3.5" />}
                 </span>
               )}
-              {/* The column's edge: drag it, or Tab to it and use the arrows
-                  (Shift for bigger steps, Home and End for the ends); a
-                  double click (or Reset width) gives the column back to its
-                  content's width (owner, 2026-09-30); Shift+F10 opens the
-                  column's menu. */}
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label={t("tableColumns.resize", { column: titleOf(id) })}
-                aria-valuenow={widthOf(id)}
-                aria-valuemin={byId.get(id)!.min}
-                aria-valuemax={Math.max(byId.get(id)!.max, widthOf(id))}
-                tabIndex={0}
-                data-col-edge={id}
-                onPointerDown={(e) => startResize(e, id)}
-                onDoubleClick={() => api.setWidth(id, null)}
-                onKeyDown={(e) => onEdgeKey(e, id)}
-                className={cn(
-                  "group/edge absolute inset-y-0 -right-[5px] z-[1] flex w-[10px] justify-center focus-ring-inset",
-                  fixedEnd(id) ? "pointer-events-none" : "cursor-col-resize",
-                )}
-              >
-                {/* A neutral hairline on hover or focus: the edge, not a stripe. CanvasText in contrast themes. */}
-                <span aria-hidden="true" className="my-1.5 w-px bg-stroke-sub-300 opacity-0 group-hover/edge:opacity-100 group-focus-visible/edge:opacity-100 forced-colors:bg-[CanvasText]" />
-              </div>
+              {!locked && (
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label={t("tableColumns.resize", { column: titleOf(id) })}
+                  aria-valuenow={widthOf(id)}
+                  aria-valuemin={byId.get(id)!.min}
+                  aria-valuemax={Math.max(byId.get(id)!.max, widthOf(id))}
+                  tabIndex={0}
+                  data-col-edge={id}
+                  onPointerDown={(e) => startResize(e, id)}
+                  onDoubleClick={() => api.setWidth(id, null)}
+                  onKeyDown={(e) => onEdgeKey(e, id)}
+                  className={cn(
+                    "group/edge absolute inset-y-0 -right-[5px] z-[1] flex w-[10px] justify-center focus-ring-inset",
+                    fixedEnd(id) ? "pointer-events-none" : "cursor-col-resize",
+                  )}
+                >
+                  {/* A neutral hairline on hover or focus: the edge, not a stripe. CanvasText in contrast themes. */}
+                  <span aria-hidden="true" className="my-1.5 w-px bg-stroke-sub-300 opacity-0 group-hover/edge:opacity-100 group-focus-visible/edge:opacity-100 forced-colors:bg-[CanvasText]" />
+                </div>
+              )}
             </div>
           );
         })}

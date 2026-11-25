@@ -3,15 +3,13 @@ import { useOnRightsMoved } from "../../entities/space";
 import { Checkbox, clientScale, cn, layoutRect, layoutToPointer, useContextMenu, useInputModality, useLatched, useVirtualList, type ContextMenuApi, type MenuItem } from "@proxyshard/shardx-ui-kit";
 import { ListStateCenter, LoadError, LoadingRows } from "../../shared/ui/ListStates";
 import { ProfileListEmpty } from "./ProfileListEmpty";
-import { useLang, useT } from "../../shared/i18n";
-import { ListHeader, useAutoWidths, type ColumnSort } from "../../shared/ui/listHeader";
+import { useT } from "../../shared/i18n";
+import { ListHeader, type ColumnSort } from "../../shared/ui/listHeader";
 import {
-  rowKey, setOnRestored, useListSearch, useProfile, useProfileUi, useProfileLayout, useSizingRows, useVisible, useProxyMap,
-  useProfileColumnsApi, PROFILE_COLUMNS, PROFILE_FLOATING_ACTIONS, PROFILE_SORTS, type ProfileColumnId, type ProfileMeta,
+  rowKey, setOnRestored, useListSearch, useProfile, useProfileUi, useProfileLayout, useVisible, useProxyMap,
+  useProfileColumnsApi, PROFILE_FLOATING_ACTIONS, PROFILE_SORTS, type ProfileColumnId, type ProfileMeta,
 } from "../../entities/profile";
-import { tagsOf, useTags } from "../../entities/tag";
 import type { ProxyEntry } from "../../entities/proxy";
-import { profileFits, profileFolded } from "./profileFits";
 import { useScrollMemory, useScrollReset } from "../../shared/model/scrollMemory";
 import { rowActionsCoverPx } from "../../shared/ui/RowHoverActions";
 import { ProfileRow } from "./ProfileRow";
@@ -31,19 +29,8 @@ export const ROW_HEIGHT = LIST_ROW_HEIGHT;
 /** The sticky column header. */
 const HEADER_HEIGHT = LIST_HEADER_HEIGHT;
 
-/// The Profiles list: a virtual grid of 36 px rows under a sticky header. It
-/// is its own scroll container, so the header stays put and scrolls sideways
-/// with the rows. A profile opens in Peek, beside the list, which keeps every
-/// chosen column: wider than its card, it scrolls sideways inside it with the
-/// select box, Name and the row actions pinned (owner decision 2026-09-26).
-/// Its select column keeps its slot before Name in every state (owner,
-/// 2026-10-07): at rest a row's box shows on its hover only, and the first
-/// pick puts the list in selection mode (owner, 2026-10-01): `has-selection`
-/// on the list shows every box (the kit's tokens.css).
-const NO_ROWS: never[] = [];
-
-/// `loading` is the page's held first load (`useHeldLoading`): the page
-/// switches its header and this list in one frame.
+/// The Profiles list: a virtual grid of 36 px rows under a sticky header with
+/// fixed column widths and locked column order.
 export function ProfileTable({ loading }: { loading: boolean }) {
   const t = useT();
   const folder = useProfileUi((s) => s.folder);
@@ -83,37 +70,6 @@ export function ProfileTable({ loading }: { loading: boolean }) {
   const layout = useProfileLayout();
   const { template: columns, minWidth } = layout;
   const columnsApi = useProfileColumnsApi();
-  // Columns size themselves to their content until a person resizes them
-  // (owner, 2026-09-30), over the whole list, the search left out.
-  const sizingRows = useSizingRows();
-  const tags = useTags((s) => s.tags);
-  const byProfile = useTags((s) => s.byProfile);
-  const lang = useLang((s) => s.lang);
-  // The times' words change by the hour ("23 hours ago", "Yesterday"): the
-  // fits, and so the widths, follow an hour clock (review M1).
-  const hour = useMinuteClock((m) => Math.floor(m / 3_600_000));
-  const fits = useMemo(
-    () => profileFits({ proxyOf: (id) => proxyMap[id], tagsOf: (id) => tagsOf(id, { tags, byProfile }), lang, now: Date.now() }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `hour` moves `now` on
-    [proxyMap, tags, byProfile, lang, hour],
-  );
-  const folded = useMemo(
-    () => profileFolded({ proxyOf: (id) => proxyMap[id], tagsOf: (id) => tagsOf(id, { tags, byProfile }), lang, now: Date.now() }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `hour` moves `now` on
-    [proxyMap, tags, byProfile, lang, hour],
-  );
-  useAutoWidths({
-    defs: PROFILE_COLUMNS,
-    shown: layout.shown,
-    // None while the placeholder rows show: the first measure lands with the
-    // rows, not over the placeholders (review M5).
-    rows: loading ? NO_ROWS : sizingRows,
-    fits,
-    folded,
-    listRef: scrollRef,
-    sortable: (id) => PROFILE_SORTS[id] !== undefined,
-    onWidths: (w) => useProfileUi.getState().setAutoWidths(w),
-  });
   const setSort = useProfileUi((s) => s.setSort);
   // A column's own orders (Display's, by column) and its sort mark.
   const columnSort: ColumnSort<ProfileColumnId> = {
@@ -298,6 +254,7 @@ export function ProfileTable({ loading }: { loading: boolean }) {
             layout={layout}
             listRef={scrollRef}
             wrapRef={wrapRef}
+            locked
             lead={
               <Checkbox
                 aria-label={t("profileTable.selectAll")}
