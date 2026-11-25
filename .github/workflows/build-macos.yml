@@ -95,7 +95,9 @@ jobs:
 
       - name: Build Tauri macOS bundle
         shell: bash
-        run: npx tauri build --target ${{ steps.target.outputs.tauri_target }}
+        run: |
+          rm -rf "src-tauri/target/${{ steps.target.outputs.tauri_target }}/release/bundle"
+          npx tauri build --target ${{ steps.target.outputs.tauri_target }}
 
       - name: Ad-hoc sign .app and package clean .dmg + .app.tar.gz
         shell: bash
@@ -107,9 +109,22 @@ jobs:
           SUFFIX="${{ steps.target.outputs.suffix }}"
           BUNDLE_DIR="src-tauri/target/${TARGET}/release/bundle"
 
-          APP_PATH=$(find "${BUNDLE_DIR}/macos" -maxdepth 1 -name '*.app' -print -quit)
-          if [ -z "$APP_PATH" ]; then
+          APP_PATH="${BUNDLE_DIR}/macos/LPBrowser.app"
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH=$(find "${BUNDLE_DIR}/macos" -maxdepth 1 -name '*.app' -print -quit)
+          fi
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
             echo "::error::Could not find built .app under ${BUNDLE_DIR}/macos"
+            exit 1
+          fi
+
+          # Verify built Info.plist has clean LPBrowser branding and no stale Shard* strings
+          PLIST="${APP_PATH}/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$PLIST"
+          if grep -qiE 'shardx|shardbrowser' "$PLIST"; then
+            echo "::error::Unexpected ShardX/ShardBrowser string in ${PLIST}"
+            cat "$PLIST"
             exit 1
           fi
 
