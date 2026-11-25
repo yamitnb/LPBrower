@@ -8,9 +8,13 @@
 //!   ICNS, clears quarantine xattrs, and re-signs `ShardX.app` ad-hoc so Apple Silicon runs cleanly.
 
 use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-const MARKER_FILE: &str = ".lpbrower-branded-v6";
+#[path = "ntp_template.rs"]
+mod ntp_template;
+
+const MARKER_FILE: &str = ".lpbrower-branded-v7";
 
 #[cfg(windows)]
 const ICO_BYTES: &[u8] = include_bytes!("../icons/browser-icon.ico");
@@ -59,19 +63,19 @@ const START_PAGE_HTML: &str = r#"<!doctype html>
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg-page: #191919;
-    --bg-tile-fill: #ffffff0a;
-    --bg-on-tile: #ffffff0a;
-    --shadow-tile: 0 0 #0000;
-    --text-strong: #ededed;
-    --text-sub: #bababa;
-    --text-soft: #9e9e9e;
-    --icon-sub: #bababa;
-    --primary-base: #3b82f6;
-    --primary-text: #93c5fd;
-    --primary-tint: #3b82f638;
-    --primary-tint-hover: #3b82f64d;
-    --focus: #93c5fd;
+    --bg-page: #0c1427;
+    --bg-tile-fill: #131e38cc;
+    --bg-on-tile: #ffffff0f;
+    --shadow-tile: 0 6px 20px -6px #04091473;
+    --text-strong: #f8fafc;
+    --text-sub: #cbd5e1;
+    --text-soft: #8597b8;
+    --icon-sub: #22d3ee;
+    --primary-base: #22d3ee;
+    --primary-text: #67e8f9;
+    --primary-tint: #22d3ee24;
+    --primary-tint-hover: #22d3ee38;
+    --focus: #22d3ee;
     color-scheme: dark;
   }
 }
@@ -333,12 +337,12 @@ pub fn ensure_branded(engine_dir: &Path) {
             return;
         }
         if brand_macos_bundle(&app_bundle) {
-            if fs::write(&marker, "v6\n").is_err() {
+            if fs::write(&marker, "v7\n").is_err() {
                 if let Some(fb) = fallback_marker {
                     if let Some(parent) = fb.parent() {
                         let _ = fs::create_dir_all(parent);
                     }
-                    let _ = fs::write(&fb, "v6\n");
+                    let _ = fs::write(&fb, "v7\n");
                 }
             }
         }
@@ -353,6 +357,7 @@ pub fn ensure_branded(engine_dir: &Path) {
     let mut all_ok = true;
     patch_locales(engine_dir);
     patch_scale_paks(engine_dir);
+    patch_resources_pak(engine_dir);
 
     let dll = engine_dir.join("chrome.dll");
     if dll.is_file() {
@@ -401,7 +406,7 @@ pub fn ensure_branded(engine_dir: &Path) {
     }
 
     if all_ok {
-        let _ = fs::write(&marker, "v6\n");
+        let _ = fs::write(&marker, "v7\n");
     }
 }
 
@@ -480,6 +485,7 @@ fn brand_macos_bundle(app_bundle: &Path) -> bool {
                 let fw_res = ver_path.join("Resources");
                 if fw_res.is_dir() {
                     patch_scale_paks(&fw_res);
+                    patch_resources_pak(&fw_res);
                     patch_locales(&fw_res);
                     patch_macos_lproj_locales(&fw_res);
                     patch_macos_infoplist_strings(&fw_res);
@@ -940,6 +946,77 @@ fn patch_scale_paks(engine_dir: &Path) {
     }
 }
 
+fn gzip_bytes(raw: &[u8]) -> Option<Vec<u8>> {
+    let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    enc.write_all(raw).ok()?;
+    enc.finish().ok()
+}
+
+fn gunzip_bytes(raw: &[u8]) -> Option<Vec<u8>> {
+    if raw.len() < 2 || raw[0] != 0x1f || raw[1] != 0x8b {
+        return None;
+    }
+    let mut dec = flate2::read::GzDecoder::new(raw);
+    let mut out = Vec::new();
+    dec.read_to_end(&mut out).ok()?;
+    Some(out)
+}
+
+/// Patch Chromium's `resources.pak` so `chrome://newtab/` (both `chrome://new-tab-page/`
+/// and `chrome://new-tab-page-third-party/`) renders the branded LPBrowser Blank Tab.
+/// Matches entries by decompressed content signature so Windows, macOS, and Linux work
+/// identically even when platform resource IDs shift.
+fn patch_resources_pak(res_dir: &Path) {
+    let pak = res_dir.join("resources.pak");
+    if !pak.is_file() {
+        return;
+    }
+    let Some(main_html_gz) = gzip_bytes(
+        ntp_template::build_ntp_html("new_tab_page.js", "LPBROWER_NTP_MAIN_HTML").as_bytes(),
+    ) else {
+        return;
+    };
+    let Some(main_js_gz) = gzip_bytes(ntp_template::build_ntp_js("LPBROWER_NTP_MAIN_JS").as_bytes()) else {
+        return;
+    };
+    let Some(tp_html_gz) = gzip_bytes(
+        ntp_template::build_ntp_html("new_tab_page_third_party.js", "LPBROWER_NTP_3P_HTML").as_bytes(),
+    ) else {
+        return;
+    };
+    let Some(tp_js_gz) = gzip_bytes(ntp_template::build_ntp_js("LPBROWER_NTP_3P_JS").as_bytes()) else {
+        return;
+    };
+
+    let _ = patch_pak_v5(&pak, |_rid, raw| {
+        if raw.len() < 10 || raw.len() > 160_000 || raw[0] != 0x1f || raw[1] != 0x8b {
+            return None;
+        }
+        let dec = gunzip_bytes(raw)?;
+        if find_subslice(&dec, b"<ntp-app></ntp-app>").is_some()
+            || find_subslice(&dec, b"LPBROWER_NTP_MAIN_HTML").is_some()
+        {
+            return Some(main_html_gz.clone());
+        }
+        if find_subslice(&dec, b"<cr-most-visited></cr-most-visited>").is_some()
+            || find_subslice(&dec, b"LPBROWER_NTP_3P_HTML").is_some()
+        {
+            return Some(tp_html_gz.clone());
+        }
+        if find_subslice(&dec, b"recordSparseValueWithPersistentHash,recordVoiceAction").is_some()
+            || find_subslice(&dec, b"LPBROWER_NTP_MAIN_JS").is_some()
+        {
+            return Some(main_js_gz.clone());
+        }
+        if find_subslice(&dec, b"mostVisitedElement.theme=theme.mostVisited").is_some()
+            || find_subslice(&dec, b"LPBROWER_NTP_3P_JS").is_some()
+        {
+            return Some(tp_js_gz.clone());
+        }
+        None
+    });
+}
+
 fn utf16le(s: &str) -> Vec<u8> {
     s.encode_utf16().flat_map(|c| c.to_le_bytes()).collect()
 }
@@ -948,9 +1025,10 @@ fn patch_chrome_dll(dll_path: &Path) -> std::io::Result<()> {
     let mut data = fs::read(dll_path)?;
     let mut modified = false;
 
-    // 1. Start page HTML (exact byte length)
-    let start_marker = b"<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"color-scheme\" content=\"light dark\">\n<title>ShardBrowser</title>";
-    if let Some(pos) = find_subslice(&data, start_marker) {
+    // 1. Start page HTML (exact byte length; matches fresh ShardBrowser or previously branded LPBrower)
+    let start_marker_shard = b"<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"color-scheme\" content=\"light dark\">\n<title>ShardBrowser</title>";
+    let start_marker_lp = b"<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"color-scheme\" content=\"light dark\">\n<title>LPBrower</title>";
+    if let Some(pos) = find_subslice(&data, start_marker_shard).or_else(|| find_subslice(&data, start_marker_lp)) {
         let end_marker = b"</html>";
         if let Some(rel_end) = find_subslice(&data[pos..], end_marker) {
             let end_pos = pos + rel_end + end_marker.len();
@@ -1504,6 +1582,11 @@ mod tests {
         let pak = make_pak_v5(&[(101, b"About ShardBrowser and ShardX")]);
         fs::write(fw_lproj.join("locale.pak"), &pak).unwrap();
 
+        let fake_ntp_html = gzip_bytes(b"<!doctype html><body><ntp-app></ntp-app><script type=\"module\" src=\"new_tab_page.js\"></script></body>").unwrap();
+        let fake_ntp_js = gzip_bytes(b"export {recordSparseValueWithPersistentHash,recordVoiceAction};").unwrap();
+        let res_pak = make_pak_v5(&[(693, &fake_ntp_html), (698, &fake_ntp_js)]);
+        fs::write(fw_ver.join("Resources").join("resources.pak"), &res_pak).unwrap();
+
         let mut fake_fw = Vec::new();
         fake_fw.extend_from_slice(b"prefix\0chrome://shardx/\0middle");
         fake_fw.extend_from_slice(&utf16le("ShardX ("));
@@ -1541,6 +1624,12 @@ mod tests {
         let updated_pak = fs::read(fw_lproj.join("locale.pak")).unwrap();
         assert!(find_subslice(&updated_pak, b"About LPBrower and LPBrower").is_some());
         assert!(find_subslice(&updated_pak, b"Shard").is_none());
+
+        let updated_res_pak = fs::read(fw_ver.join("Resources").join("resources.pak")).unwrap();
+        assert!(updated_res_pak.len() > res_pak.len());
+        assert!(START_PAGE_HTML.len() <= 11000, "START_PAGE_HTML too long: {}", START_PAGE_HTML.len());
+        assert!(!ntp_template::build_ntp_html("new_tab_page.js", "M").contains('$'));
+        assert!(!ntp_template::build_ntp_js("M").contains('$'));
 
         let updated_fw = fs::read(fw_ver.join("ShardX Framework")).unwrap();
         assert!(find_subslice(&updated_fw, b"\0chrome://newtab/\0").is_some());

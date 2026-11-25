@@ -228,10 +228,10 @@ function ExtensionsItem({ compact }: { compact: boolean }) {
       label={rail ? (n === 1 ? t("sidebar.extensionsRailOne", { n }) : t("sidebar.extensionsRailMany", { n })) : t("sidebar.navExtensions")}
       icon={rail ? (
         <span className="relative flex">
-          <NavExtensionsIcon className="size-3.5" />
+          <NavExtensionsIcon className="size-4" />
           <Badge data-update-count aria-hidden="true" color="warning" size="small" shape="pill" className="absolute -top-2 left-2 min-w-[14px] px-[3px]! leading-none">{n}</Badge>
         </span>
-      ) : <NavExtensionsIcon className="size-3.5" />}
+      ) : <NavExtensionsIcon className="size-4" />}
       compact={compact}
       badge={n > 0 ? <Badge data-update-count color="warning" size="small">{n}</Badge> : undefined}
       badgeLabel={n > 0 ? (n === 1 ? t("sidebar.extensionUpdatesOne", { n }) : t("sidebar.extensionUpdatesMany", { n })) : undefined}
@@ -267,7 +267,7 @@ function AllProfilesItem({ compact }: { compact: boolean }) {
     <NavItem
       size="small"
       data-nav="profiles"
-      icon={<NavBrowsersIcon className="size-3.5" />}
+      icon={<NavBrowsersIcon className="size-4" />}
       // The compact rail has no heading to carry the running count, so it
       // folds into this item's own accessible name and tooltip instead (no
       // information lost). Fix round 2: the same `ready` gate as the count
@@ -1012,10 +1012,10 @@ export function Sidebar() {
             <button
               type="button"
               onClick={toggle}
-              className="flex items-center justify-center p-1.5 rounded-lg hover:bg-bg-subtle text-primary-base transition-colors cursor-pointer"
+              className="flex items-center justify-center p-1 rounded-lg hover:bg-bg-subtle text-primary-base transition-colors cursor-pointer"
               title="LPBrower - Nhấp để mở rộng menu"
             >
-              <ShardLogo />
+              <ShardLogo size={22} />
             </button>
             <IconButton
               size="3xsmall"
@@ -1030,9 +1030,9 @@ export function Sidebar() {
           </>
         ) : (
           <>
-            <span data-brand className="flex items-center gap-2.5 text-ui font-bold text-text-strong-950">
-              <span className="brand-mark text-primary-base drop-shadow-xs"><ShardLogo /></span>
-              <span className="tracking-tight text-sm font-bold bg-gradient-to-r from-primary-text via-primary-base to-primary-text bg-clip-text text-transparent">LPBrower</span>
+            <span data-brand className="flex items-center gap-2 text-ui font-bold text-text-strong-950">
+              <span className="brand-mark flex drop-shadow-xs"><ShardLogo size={24} /></span>
+              <span className="tracking-tight text-sm font-bold bg-gradient-to-r from-cyan-500 via-primary-base to-purple-500 bg-clip-text text-transparent">LPBrower</span>
             </span>
             {/* Search icon + sidebar collapse icon neatly paired in the header. */}
             <div className="ml-auto flex items-center gap-0.5">
@@ -1081,8 +1081,8 @@ export function Sidebar() {
             />
           )}
           <AllProfilesItem compact={compact} />
-          <PageItem id="proxies" label={t("sidebar.navProxies")} icon={<RouteIcon className="size-3.5" />} compact={compact} />
-          <PageItem id="fingerprints" label={t("sidebar.navFingerprints")} icon={<NavFingerprintsIcon className="size-3.5" />} compact={compact} />
+          <PageItem id="proxies" label={t("sidebar.navProxies")} icon={<RouteIcon className="size-4" />} compact={compact} />
+          <PageItem id="fingerprints" label={t("sidebar.navFingerprints")} icon={<NavFingerprintsIcon className="size-4" />} compact={compact} />
           <ExtensionsItem compact={compact} />
           <PageItem id="bookmarks" label={t("sidebar.navBookmarks")} icon={<NavBookmarksIcon className="size-3.5" />} compact={compact} />
           <PageItem id="automation" label={t("sidebar.navProjects")} icon={<NavAutomationIcon className="size-3.5" />} compact={compact} />

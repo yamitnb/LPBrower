@@ -6,7 +6,7 @@ import {
   HardwareFields, ScreenField, WindowFields, LocaleFields, NoiseFields, PrivacyFields, MediaFields,
 } from "../../manage-profiles/ui/fields";
 import { patchForm, setFieldInvalid, useProfileForm, type ProfileFormDraft } from "../model/useProfileForm";
-import { ComputerIcon, NavFingerprintsIcon } from "../../../shared/icons";
+import { ComputerIcon, GhostModeIcon, NavFingerprintsIcon } from "../../../shared/icons";
 
 /**
  * Redesigned Fingerprint Tab: clean 2-section structured hardware & anti-detect controls.
@@ -28,7 +28,7 @@ export function FingerprintTab({ draft }: { draft: ProfileFormDraft }) {
       <section className="flex flex-col gap-3 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-3.5">
         <div className="flex items-center justify-between pb-2 border-b border-stroke-soft-200/70">
           <div className="flex items-center gap-2">
-            <ComputerIcon className="size-3.5 text-primary-base" />
+            <ComputerIcon className="size-4" />
             <h3 className="m-0 text-xs font-semibold text-text-strong-950">
               {t("profileForm.groupHardware") || "Phần cứng & Màn hình"}
             </h3>
@@ -57,12 +57,13 @@ export function FingerprintTab({ draft }: { draft: ProfileFormDraft }) {
       <section className="flex flex-col gap-3 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-3.5">
         <div className="flex items-center justify-between pb-2 border-b border-stroke-soft-200/70">
           <div className="flex items-center gap-2">
-            <NavFingerprintsIcon className="size-3.5 text-primary-base" />
+            <NavFingerprintsIcon className="size-4" />
             <h3 className="m-0 text-xs font-semibold text-text-strong-950">
               {t("profileForm.groupLocale") || "Định vị, Nhiễu (Noise) & WebRTC"}
             </h3>
           </div>
-          <span className="text-[11px] text-text-soft-400">
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-text-soft-400">
+            <GhostModeIcon className="size-4" />
             Fingerprint Protection
           </span>
         </div>

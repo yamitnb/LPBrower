@@ -95,7 +95,7 @@ export function ProfileBlueprintCard({
       <div className="flex flex-col gap-2.5 p-3.5 bg-bg-white-0 border-b border-stroke-soft-200">
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-text-soft-400">
-            <span className="brand-mark inline-flex [&>svg]:size-3.5"><ShardLogo /></span>
+            <span className="brand-mark inline-flex"><ShardLogo size={16} /></span>
             Tóm tắt hồ sơ
           </span>
           <span className="inline-flex items-center gap-1 rounded-full bg-bg-weak-50 px-2 py-0.5 text-[11px] font-medium text-text-sub-600 ring-1 ring-inset ring-stroke-soft-200">

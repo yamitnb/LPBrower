@@ -262,7 +262,7 @@ fn draw_text(
 fn icon_hash(taskbar_title: &str, profile_name: &str, color: Option<&str>) -> u64 {
     let badge = taskbar_title.trim();
     let key = format!(
-        "chromium-v3\u{1}{badge}\u{1}{}\u{1}{}\u{1}{}\u{1}{}",
+        "lpbrand-v4\u{1}{badge}\u{1}{}\u{1}{}\u{1}{}\u{1}{}",
         if badge.is_empty() { "" } else { profile_name },
         color.unwrap_or(""),
         env!("CARGO_PKG_VERSION"),
