@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { Badge, CopyButton, CountRoll, IconButton, NavItem, Popover, Tooltip, cn, useContextMenu, useRovingFocus, type MenuItem } from "@proxyshard/shardx-ui-kit";
+import lpbrowserAppIcon from "../../shared/assets/lpbrowser-app-icon.png";
 import {
   FolderAddIconApp,
   FOLDER_ICON_GLYPHS,
@@ -14,8 +14,6 @@ import {
   NavTrashIcon,
   RouteIcon,
   SearchIcon,
-  ShardLogo,
-  ShardMini,
   SidebarIcon,
   SpacePersonalIcon,
   SpaceTeamIcon,
@@ -26,10 +24,9 @@ import { useRailKey } from "./useRailKey";
 import { LABEL_COLORS, labelColor, type LabelColorId } from "../../shared/constants";
 import { titleBarOnMouseDown } from "../../shared/lib/dragWindow";
 import { useNarrowWindow } from "../../shared/hooks/useNarrowWindow";
-import type { RtUpdate, Section } from "../../shared/types";
+import type { Section } from "../../shared/types";
 import { useNav } from "../../shared/model/navigation";
 import { useKeyPrefs } from "../../shared/model/keyPrefs";
-import { useWhatsNew } from "../../shared/model/whatsNew";
 import { useLang, useT } from "../../shared/i18n";
 import {
   leaveList, profileStatus, proxyMissing, useAllViews, useFolderLook, useFolders, useProfile, useProfileUi, useRunningCount, useSaving,
@@ -881,28 +878,6 @@ function SpaceItem({ compact }: { compact: boolean }) {
   );
 }
 
-/** The launcher version; opens What's new and flags an available update. */
-function VersionItem({ compact }: { compact: boolean }) {
-  const t = useT();
-  const openWhatsNew = useWhatsNew((s) => s.setOpen);
-  const [info, setInfo] = useState<RtUpdate | null>(null);
-  useEffect(() => {
-    invoke<RtUpdate>("launcher_update_check").then(setInfo).catch(() => {});
-  }, []);
-  return (
-    <NavItem
-      size="small"
-      // The app fetches What's new's code ahead when this is reached (App.tsx).
-      data-nav="whats-new"
-      icon={<span className="brand-mark flex text-primary-base"><ShardMini size={18} /></span>}
-      label={t("sidebar.launcherVersion", { v: info?.current ?? "…" })}
-      collapsed={compact}
-      onClick={() => openWhatsNew(true)}
-      badge={info?.update_available && <Badge color="warning" size="small">{t("sidebar.updateBadge")}</Badge>}
-    />
-  );
-}
-
 const moreBelow = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight > 1;
 
 /// Scrolls the user-sized lists (Pinned, Folders, Views), and fades out at
@@ -1012,10 +987,16 @@ export function Sidebar() {
             <button
               type="button"
               onClick={toggle}
-              className="flex items-center justify-center p-1 rounded-lg hover:bg-bg-subtle text-primary-base transition-colors cursor-pointer"
-              title="LPBrower - Nhấp để mở rộng menu"
+              className="flex items-center justify-center p-1 rounded-lg hover:bg-bg-subtle transition-colors cursor-pointer"
+              title="LPBrowser - Nhấp để mở rộng menu"
             >
-              <ShardLogo size={24} />
+              <img
+                src={lpbrowserAppIcon}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                className="size-[26px] shrink-0 object-contain drop-shadow-xs"
+              />
             </button>
             <IconButton
               size="3xsmall"
@@ -1030,9 +1011,17 @@ export function Sidebar() {
           </>
         ) : (
           <>
-            <span data-brand className="flex items-center gap-2.5 text-ui font-bold text-text-strong-950">
-              <span className="brand-mark flex text-primary-base drop-shadow-xs"><ShardLogo size={26} /></span>
-              <span className="tracking-tight text-[15px] font-bold bg-gradient-to-r from-primary-text via-primary-base to-primary-text bg-clip-text text-transparent">LPBrower</span>
+            <span data-brand className="flex items-center gap-2.5 select-none">
+              <img
+                src={lpbrowserAppIcon}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                className="size-[30px] shrink-0 object-contain drop-shadow-xs"
+              />
+              <span className="text-[17.5px] leading-none font-extrabold tracking-[-0.025em] text-text-strong-950">
+                <span className="lp-brand-grad">LP</span>Browser
+              </span>
             </span>
             {/* Search icon + sidebar collapse icon neatly paired in the header. */}
             <div className="ml-auto flex items-center gap-0.5">
@@ -1106,7 +1095,6 @@ export function Sidebar() {
         {/* In a team its Trash is the team's, for its admin and a member who sees rows in it. */}
         {(!team || teamTrash) && <PageItem id="trash" label={t("sidebar.navTrash")} icon={<NavTrashIcon className="size-[18px]" />} compact={compact} />}
         <PageItem id="settings" label={t("sidebar.navSettings")} icon={<NavSettingsIcon className="size-[18px]" />} compact={compact} />
-        <VersionItem compact={compact} />
         <ApiStatus compact={compact} />
       </div>
     </aside>

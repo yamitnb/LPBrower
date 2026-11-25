@@ -442,3 +442,23 @@ header[data-compact="3"] [data-title-block] > :not([data-page-title]) {
    the system text color. */
 .brand-mark { color: var(--color-primary-base); }
 @media (forced-colors: active) { .brand-mark { color: CanvasText; } }
+
+/* LPBrowser sidebar wordmark gradient matching the Blank Tab brand lockup. */
+.lp-brand-grad {
+  background: linear-gradient(135deg, #0284c7 0%, #7e22ce 68%, #059669 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+[data-theme="dark"] .lp-brand-grad {
+  background: linear-gradient(135deg, #38bdf8 0%, #a855f7 68%, #34d399 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@media (forced-colors: active) {
+  .lp-brand-grad {
+    background: none;
+    color: CanvasText;
+  }
+}
