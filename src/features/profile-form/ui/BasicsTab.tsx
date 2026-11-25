@@ -51,7 +51,7 @@ export function BasicsTab({ draft }: { draft: ProfileFormDraft }) {
       <section className="flex flex-col gap-2.5 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-3.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <ComputerIcon className="size-3.5 text-primary-base" />
+            <ComputerIcon className="size-[22px]" />
             <h3 className="m-0 text-xs font-semibold text-text-strong-950">
               {t("inlineEditor.osLabel") || "Hệ điều hành giả lập"}
             </h3>
@@ -80,11 +80,11 @@ export function BasicsTab({ draft }: { draft: ProfileFormDraft }) {
               >
                 <div
                   className={cn(
-                    "flex size-7 shrink-0 items-center justify-center rounded-md transition-colors",
+                    "flex size-8 shrink-0 items-center justify-center rounded-md transition-colors",
                     active ? "bg-primary-base text-white" : "bg-bg-white-0 text-icon-sub-600 ring-1 ring-inset ring-stroke-soft-200",
                   )}
                 >
-                  <Icon className="size-3.5" />
+                  <Icon className="size-[18px]" />
                 </div>
                 <div className="flex flex-col min-w-0 flex-1">
                   <span className={cn("text-xs font-semibold truncate", active ? "text-primary-text" : "text-text-strong-950")}>
@@ -107,7 +107,7 @@ export function BasicsTab({ draft }: { draft: ProfileFormDraft }) {
       {/* Section 3: Metadata (Taskbar Title, Tags, Color, Notes, Cookies) */}
       <section className="flex flex-col gap-2 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-3.5">
         <div className="flex items-center gap-2 pb-1.5 border-b border-stroke-soft-200/70">
-          <TagIcon className="size-3.5 text-primary-base" />
+          <TagIcon className="size-[18px] text-primary-base" />
           <h3 className="m-0 text-xs font-semibold text-text-strong-950">
             Taskbar Title, Phân loại &amp; Ghi chú
           </h3>

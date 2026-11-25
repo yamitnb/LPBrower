@@ -109,8 +109,10 @@ type IconProps = Omit<HugeiconsIconProps, "icon">;
 // Decorative unless told otherwise: the control around it carries the name
 // (A11Y-21). A meaningful icon passes `role="img"` and an `aria-label` (or
 // `aria-hidden={false}`).
+const hasExplicitSize = (cls?: string) => !!cls && /\b(size-|w-|h-)/.test(cls);
+
 const make = (icon: HugeiconsIconProps["icon"], name?: string) =>
-  function AppIcon(props: IconProps) {
+  function AppIcon({ className, ...props }: IconProps) {
     return (
       <HugeiconsIcon
         icon={icon}
@@ -118,6 +120,7 @@ const make = (icon: HugeiconsIconProps["icon"], name?: string) =>
         data-icon={name}
         aria-hidden={props.role ? undefined : "true"}
         focusable="false"
+        className={cn(!hasExplicitSize(className) && "size-[17px]", className)}
         {...props}
       />
     );
@@ -140,7 +143,11 @@ const makeBrand = (src: string, name?: string) =>
         aria-hidden={role ? undefined : "true"}
         role={role}
         style={px ? { width: px, height: px, ...style } : style}
-        className={cn("size-4 shrink-0 object-contain select-none", className)}
+        className={cn(
+          !px && !hasExplicitSize(className) && "size-[22px]",
+          "shrink-0 object-contain select-none",
+          className,
+        )}
         {...(rest as Record<string, unknown>)}
       />
     );
@@ -262,7 +269,7 @@ export const ChevronRightIcon = make(ArrowRight01Icon);
  *  `animate-spin`; it keeps turning under Reduce motion (ANIM-05). */
 export const SpinnerIcon = make(Loading03Icon, "spinner");
 
-export function ShardLogo({ size = 22, className }: { size?: number; className?: string }) {
+export function ShardLogo({ size = 28, className }: { size?: number; className?: string }) {
   return (
     <img
       src="/brand-icons/app-main.png"
@@ -277,7 +284,7 @@ export function ShardLogo({ size = 22, className }: { size?: number; className?:
   );
 }
 
-export function ShardMini({ size = 16, className }: { size?: number; className?: string }) {
+export function ShardMini({ size = 20, className }: { size?: number; className?: string }) {
   return (
     <img
       src="/brand-icons/taskbar.png"

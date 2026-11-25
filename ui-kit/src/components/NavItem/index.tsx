@@ -44,8 +44,8 @@ const NavItem = forwardRef<HTMLButtonElement, NavItemProps>(function NavItem(
         // 8 px in and an 8 px gap: 8.75 before the 4 px grid, floored (owner:
         // nothing larger than before), so the icon lines up with the launcher's
         // sidebar mark and group labels again.
-        'relative flex w-full shrink-0 items-center gap-[8px] rounded-control px-[8px] text-left text-ui focus-ring aria-[current=page]:forced-selected [&>*]:pointer-events-none',
-        size === 'small' ? 'h-7' : 'h-8',
+        'relative flex w-full shrink-0 items-center gap-[9px] rounded-control px-[8px] text-left text-ui focus-ring aria-[current=page]:forced-selected [&>*]:pointer-events-none',
+        size === 'small' ? 'h-8' : 'h-9',
         collapsed && 'justify-center px-0',
         // O3, LQ-04: the current page is neutral; navigation recedes once the
         // user has arrived, and the accent means "act here" (a drop target).
@@ -63,7 +63,7 @@ const NavItem = forwardRef<HTMLButtonElement, NavItemProps>(function NavItem(
       )}
       {...rest}
     >
-      <span className={cn('flex size-3.5 [&>svg]:size-3.5 shrink-0 items-center justify-center', dropActive ? 'text-primary-text' : active ? 'text-icon-strong-950' : 'text-icon-soft-400')}>
+      <span className={cn('flex size-[22px] [&>svg]:size-[18px] [&>img]:size-[22px] shrink-0 items-center justify-center', dropActive ? 'text-primary-text' : active ? 'text-icon-strong-950' : 'text-icon-soft-400')}>
         {icon}
       </span>
       {!collapsed && <span className="min-w-0 flex-1 truncate">{label}</span>}

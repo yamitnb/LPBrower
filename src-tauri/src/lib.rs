@@ -2715,11 +2715,281 @@ async fn ps_set_tag(id: i64, tag: String) -> Result<Value, String> {
     .map_err(|e| e.to_string())
 }
 
+#[cfg(windows)]
+mod win_taskbar_icon {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use std::path::PathBuf;
+    use std::sync::OnceLock;
+
+    const LAUNCHER_ICO_BYTES: &[u8] = include_bytes!("../icons/icon.ico");
+    const AUMID: &str = "com.lpbrower.launcher.v3";
+
+    #[repr(C)]
+    struct GUID {
+        data1: u32,
+        data2: u16,
+        data3: u16,
+        data4: [u8; 8],
+    }
+
+    #[repr(C)]
+    struct PROPERTYKEY {
+        fmtid: GUID,
+        pid: u32,
+    }
+
+    #[repr(C)]
+    struct PROPVARIANT {
+        vt: u16,
+        w_reserved1: u16,
+        w_reserved2: u16,
+        w_reserved3: u16,
+        pwsz_val: *const u16,
+        _pad: usize,
+    }
+
+    #[repr(C)]
+    struct IPropertyStoreVtbl {
+        query_interface: usize,
+        add_ref: usize,
+        release: unsafe extern "system" fn(*mut IPropertyStore) -> u32,
+        get_count: usize,
+        get_at: usize,
+        get_value: usize,
+        set_value: unsafe extern "system" fn(*mut IPropertyStore, *const PROPERTYKEY, *const PROPVARIANT) -> i32,
+        commit: unsafe extern "system" fn(*mut IPropertyStore) -> i32,
+    }
+
+    #[repr(C)]
+    struct IPropertyStore {
+        vtbl: *const IPropertyStoreVtbl,
+    }
+
+    const IID_IPROPERTYSTORE: GUID = GUID {
+        data1: 0x886D_8EEB,
+        data2: 0x8CF2,
+        data3: 0x4446,
+        data4: [0x8D, 0x02, 0xCD, 0xBA, 0x1D, 0xBD, 0xCF, 0x99],
+    };
+
+    const FMTID_APPUSERMODEL: GUID = GUID {
+        data1: 0x9F4C_2855,
+        data2: 0x9F79,
+        data3: 0x4B39,
+        data4: [0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3],
+    };
+
+    #[link(name = "shell32")]
+    extern "system" {
+        fn SetCurrentProcessExplicitAppUserModelID(app_id: *const u16) -> i32;
+        fn SHGetPropertyStoreForWindow(
+            hwnd: isize,
+            riid: *const GUID,
+            ppv: *mut *mut IPropertyStore,
+        ) -> i32;
+        fn SHChangeNotify(
+            w_event_id: i32,
+            u_flags: u32,
+            dw_item1: *const std::ffi::c_void,
+            dw_item2: *const std::ffi::c_void,
+        );
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn LoadImageW(
+            hinst: isize,
+            name: *const u16,
+            typ: u32,
+            cx: i32,
+            cy: i32,
+            fu_load: u32,
+        ) -> isize;
+        fn SendMessageW(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> isize;
+        fn SetClassLongPtrW(hwnd: isize, n_index: i32, dw_new_long: isize) -> usize;
+    }
+
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn RegCreateKeyExW(
+            hkey: isize,
+            subkey: *const u16,
+            reserved: u32,
+            class: *const u16,
+            options: u32,
+            sam_desired: u32,
+            sec_attrs: *const std::ffi::c_void,
+            phk_result: *mut isize,
+            disposition: *mut u32,
+        ) -> i32;
+        fn RegSetValueExW(
+            hkey: isize,
+            value_name: *const u16,
+            reserved: u32,
+            dw_type: u32,
+            data: *const u8,
+            cb_data: u32,
+        ) -> i32;
+        fn RegCloseKey(hkey: isize) -> i32;
+    }
+
+    fn wide_z(s: &str) -> Vec<u16> {
+        OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+    }
+
+    fn ensure_ico_file() -> Option<PathBuf> {
+        static ICO_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+        ICO_PATH
+            .get_or_init(|| {
+                let dir = dirs::data_local_dir()
+                    .or_else(dirs::cache_dir)?
+                    .join("LPBrower-launcher");
+                std::fs::create_dir_all(&dir).ok()?;
+                let p = dir.join("lpbrowser-launcher-v3.ico");
+                if std::fs::read(&p).map(|b| b != LAUNCHER_ICO_BYTES).unwrap_or(true) {
+                    std::fs::write(&p, LAUNCHER_ICO_BYTES).ok()?;
+                }
+                Some(p)
+            })
+            .clone()
+    }
+
+    fn cached_hicons() -> Option<(isize, isize)> {
+        static HICONS: OnceLock<Option<(isize, isize)>> = OnceLock::new();
+        *HICONS.get_or_init(|| {
+            let ico = ensure_ico_file()?;
+            let w_path = wide_z(&ico.to_string_lossy());
+            unsafe {
+                // IMAGE_ICON = 1, LR_LOADFROMFILE = 0x0010
+                let mut big = LoadImageW(0, w_path.as_ptr(), 1, 256, 256, 0x0010);
+                if big == 0 {
+                    big = LoadImageW(0, w_path.as_ptr(), 1, 48, 48, 0x0010);
+                }
+                let mut small = LoadImageW(0, w_path.as_ptr(), 1, 32, 32, 0x0010);
+                if small == 0 {
+                    small = LoadImageW(0, w_path.as_ptr(), 1, 16, 16, 0x0010);
+                }
+                if big == 0 && small == 0 {
+                    None
+                } else {
+                    Some((if big != 0 { big } else { small }, if small != 0 { small } else { big }))
+                }
+            }
+        })
+    }
+
+    pub fn init_process_and_registry() {
+        let Some(ico) = ensure_ico_file() else { return };
+        let ico_str = ico.to_string_lossy().to_string();
+        let w_aumid = wide_z(AUMID);
+        unsafe {
+            let _ = SetCurrentProcessExplicitAppUserModelID(w_aumid.as_ptr());
+
+            // Register HKCU\Software\Classes\AppUserModelId\com.lpbrower.launcher.v3
+            const HKEY_CURRENT_USER: isize = -0x7FFF_FFFFisize; // 0x80000001
+            const KEY_WRITE: u32 = 0x20006;
+            const REG_SZ: u32 = 1;
+            let subkey = wide_z(&format!("Software\\Classes\\AppUserModelId\\{AUMID}"));
+            let mut hkey: isize = 0;
+            if RegCreateKeyExW(
+                HKEY_CURRENT_USER,
+                subkey.as_ptr(),
+                0,
+                std::ptr::null(),
+                0,
+                KEY_WRITE,
+                std::ptr::null(),
+                &mut hkey,
+                std::ptr::null_mut(),
+            ) == 0
+                && hkey != 0
+            {
+                for (name, val) in [("DisplayName", "LPBrower Launcher"), ("IconUri", ico_str.as_str())] {
+                    let wn = wide_z(name);
+                    let wv = wide_z(val);
+                    let _ = RegSetValueExW(
+                        hkey,
+                        wn.as_ptr(),
+                        0,
+                        REG_SZ,
+                        wv.as_ptr() as *const u8,
+                        (wv.len() * 2) as u32,
+                    );
+                }
+                let _ = RegCloseKey(hkey);
+            }
+
+            SHChangeNotify(0x0800_0000, 0, std::ptr::null(), std::ptr::null());
+        }
+    }
+
+    pub fn apply_to_hwnd(raw_hwnd: isize) {
+        if raw_hwnd == 0 {
+            return;
+        }
+        if let Some((h_big, h_small)) = cached_hicons() {
+            unsafe {
+                // WM_SETICON = 0x0080, ICON_BIG = 1, ICON_SMALL = 0
+                SendMessageW(raw_hwnd, 0x0080, 1, h_big);
+                SendMessageW(raw_hwnd, 0x0080, 0, h_small);
+                // GCLP_HICON = -14, GCLP_HICONSM = -34
+                SetClassLongPtrW(raw_hwnd, -14, h_big);
+                SetClassLongPtrW(raw_hwnd, -34, h_small);
+            }
+        }
+
+        let Some(ico) = ensure_ico_file() else { return };
+        let relaunch_icon = format!("{},0", ico.display());
+        let relaunch_cmd = std::env::current_exe()
+            .ok()
+            .map(|p| format!("\"{}\"", p.display()))
+            .unwrap_or_default();
+
+        unsafe {
+            let mut store: *mut IPropertyStore = std::ptr::null_mut();
+            if SHGetPropertyStoreForWindow(raw_hwnd, &IID_IPROPERTYSTORE, &mut store) == 0
+                && !store.is_null()
+            {
+                let mut set_wstr = |pid: u32, val: &str| {
+                    if val.is_empty() {
+                        return;
+                    }
+                    let w = wide_z(val);
+                    let pk = PROPERTYKEY {
+                        fmtid: FMTID_APPUSERMODEL,
+                        pid,
+                    };
+                    let pv = PROPVARIANT {
+                        vt: 31, // VT_LPWSTR
+                        w_reserved1: 0,
+                        w_reserved2: 0,
+                        w_reserved3: 0,
+                        pwsz_val: w.as_ptr(),
+                        _pad: 0,
+                    };
+                    let _ = ((*(*store).vtbl).set_value)(store, &pk, &pv);
+                };
+                set_wstr(5, AUMID);                   // PKEY_AppUserModel_ID
+                set_wstr(3, &relaunch_icon);          // PKEY_AppUserModel_RelaunchIconResource
+                set_wstr(4, "LPBrower Launcher");     // PKEY_AppUserModel_RelaunchDisplayNameResource
+                set_wstr(2, &relaunch_cmd);           // PKEY_AppUserModel_RelaunchCommand
+                let _ = ((*(*store).vtbl).commit)(store);
+                let _ = ((*(*store).vtbl).release)(store);
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Bring the main window back from the tray / minimized state and focus it.
 fn show_main_window(app: &tauri::AppHandle) {
     use tauri::Manager;
     if let Some(w) = app.get_webview_window("main") {
+        #[cfg(windows)]
+        if let Ok(hwnd) = w.hwnd() {
+            win_taskbar_icon::apply_to_hwnd(hwnd.0 as isize);
+        }
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
@@ -2792,6 +3062,17 @@ pub fn run() {
             }
         })
         .on_window_event(|window, event| {
+            #[cfg(windows)]
+            if window.label() == "main" {
+                if let tauri::WindowEvent::Focused(true) = event {
+                    static ONCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                    if !ONCE.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                        if let Ok(hwnd) = window.hwnd() {
+                            win_taskbar_icon::apply_to_hwnd(hwnd.0 as isize);
+                        }
+                    }
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Mid-reset the window stays: closing it could end the app
                 // with the data half moved.
@@ -3071,18 +3352,13 @@ pub fn run() {
                     if let Some(ref ic) = brand_window_icon {
                         let _ = w.set_icon(ic.clone());
                     }
-                }
-            }
-
-            #[cfg(windows)]
-            {
-                #[link(name = "shell32")]
-                extern "system" {
-                    fn SHChangeNotify(w_event_id: i32, u_flags: u32, dw_item1: *const std::ffi::c_void, dw_item2: *const std::ffi::c_void);
-                }
-                unsafe {
-                    // SHCNE_ASSOCCHANGED (0x08000000) prompts Explorer/Taskbar to refresh stale exe icons.
-                    SHChangeNotify(0x0800_0000, 0, std::ptr::null(), std::ptr::null());
+                    #[cfg(windows)]
+                    {
+                        win_taskbar_icon::init_process_and_registry();
+                        if let Ok(hwnd) = w.hwnd() {
+                            win_taskbar_icon::apply_to_hwnd(hwnd.0 as isize);
+                        }
+                    }
                 }
             }
 

@@ -12,7 +12,7 @@ export function ExtensionsTab({ draft }: { draft: ProfileFormDraft }) {
     >
       <div className="flex items-center justify-between pb-2 border-b border-stroke-soft-200/70">
         <div className="flex items-center gap-2">
-          <NavExtensionsIcon className="size-3.5 text-primary-base" />
+          <NavExtensionsIcon className="size-[22px]" />
           <h3 className="m-0 text-xs font-semibold text-text-strong-950">
             Tiện ích mở rộng
           </h3>

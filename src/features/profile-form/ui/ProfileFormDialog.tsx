@@ -280,7 +280,7 @@ export function ProfileFormDialog() {
                       : "text-text-sub-600 hover:bg-bg-weak-50 hover:text-text-strong-950",
                   )}
                 >
-                  <Icon className={cn("size-3.5", selected ? "text-white" : "text-icon-sub-600")} />
+                  <Icon className={cn("size-5", selected ? "text-white" : "text-icon-sub-600")} />
                   <span>{label}</span>
                   {hasError ? (
                     <span className="size-1.5 rounded-full bg-error-base" aria-label={t("profileForm.tabError")} />

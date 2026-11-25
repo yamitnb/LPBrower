@@ -93,7 +93,7 @@ export const useRail = (): boolean => useRailState().rail;
  *  above the panels (`shellPadClass`), not in the rail (owner, 2026-10-02).
  *  The full sidebar is 232, its 240 less the 8 px of ground beside it, so
  *  the page keeps its start (never bigger). */
-export const sidebarWidthClass = (rail: boolean): string => (rail ? "w-[56px]" : "w-[232px]");
+export const sidebarWidthClass = (rail: boolean): string => (rail ? "w-[60px]" : "w-[240px]");
 
 /** A Folder's color when it has none, stable per name: in the rail the icon
  *  is all there is, so two Folders must not look the same (LAYOUT-10). */
@@ -228,10 +228,10 @@ function ExtensionsItem({ compact }: { compact: boolean }) {
       label={rail ? (n === 1 ? t("sidebar.extensionsRailOne", { n }) : t("sidebar.extensionsRailMany", { n })) : t("sidebar.navExtensions")}
       icon={rail ? (
         <span className="relative flex">
-          <NavExtensionsIcon className="size-4" />
-          <Badge data-update-count aria-hidden="true" color="warning" size="small" shape="pill" className="absolute -top-2 left-2 min-w-[14px] px-[3px]! leading-none">{n}</Badge>
+          <NavExtensionsIcon className="size-[22px]" />
+          <Badge data-update-count aria-hidden="true" color="warning" size="small" shape="pill" className="absolute -top-2 left-2.5 min-w-[14px] px-[3px]! leading-none">{n}</Badge>
         </span>
-      ) : <NavExtensionsIcon className="size-4" />}
+      ) : <NavExtensionsIcon className="size-[22px]" />}
       compact={compact}
       badge={n > 0 ? <Badge data-update-count color="warning" size="small">{n}</Badge> : undefined}
       badgeLabel={n > 0 ? (n === 1 ? t("sidebar.extensionUpdatesOne", { n }) : t("sidebar.extensionUpdatesMany", { n })) : undefined}
@@ -267,7 +267,7 @@ function AllProfilesItem({ compact }: { compact: boolean }) {
     <NavItem
       size="small"
       data-nav="profiles"
-      icon={<NavBrowsersIcon className="size-4" />}
+      icon={<NavBrowsersIcon className="size-[22px]" />}
       // The compact rail has no heading to carry the running count, so it
       // folds into this item's own accessible name and tooltip instead (no
       // information lost). Fix round 2: the same `ready` gate as the count
@@ -894,7 +894,7 @@ function VersionItem({ compact }: { compact: boolean }) {
       size="small"
       // The app fetches What's new's code ahead when this is reached (App.tsx).
       data-nav="whats-new"
-      icon={<span className="brand-mark flex"><ShardMini /></span>}
+      icon={<span className="brand-mark flex"><ShardMini size={22} /></span>}
       label={t("sidebar.launcherVersion", { v: info?.current ?? "…" })}
       collapsed={compact}
       onClick={() => openWhatsNew(true)}
@@ -1002,7 +1002,7 @@ export function Sidebar() {
           control, centered. */}
       <div
         className={cn(
-          "flex h-[52px] shrink-0 items-center",
+          "flex h-[56px] shrink-0 items-center",
           compact ? "justify-center" : "pl-3.5 pr-2",
         )}
         onMouseDown={titleBarOnMouseDown}
@@ -1015,7 +1015,7 @@ export function Sidebar() {
               className="flex items-center justify-center p-1 rounded-lg hover:bg-bg-subtle text-primary-base transition-colors cursor-pointer"
               title="LPBrower - Nhấp để mở rộng menu"
             >
-              <ShardLogo size={22} />
+              <ShardLogo size={28} />
             </button>
             <IconButton
               size="3xsmall"
@@ -1024,15 +1024,15 @@ export function Sidebar() {
               tooltipSide="right"
               shortcut={capOf(command("app.toggleSidebar"))}
               aria-keyshortcuts={ariaOf(command("app.toggleSidebar"))}
-              icon={<SidebarIcon className="size-3.5" />}
+              icon={<SidebarIcon className="size-4" />}
               onClick={toggle}
             />
           </>
         ) : (
           <>
-            <span data-brand className="flex items-center gap-2 text-ui font-bold text-text-strong-950">
-              <span className="brand-mark flex drop-shadow-xs"><ShardLogo size={24} /></span>
-              <span className="tracking-tight text-sm font-bold bg-gradient-to-r from-cyan-500 via-primary-base to-purple-500 bg-clip-text text-transparent">LPBrower</span>
+            <span data-brand className="flex items-center gap-2.5 text-ui font-bold text-text-strong-950">
+              <span className="brand-mark flex drop-shadow-xs"><ShardLogo size={32} /></span>
+              <span className="tracking-tight text-[15px] font-bold bg-gradient-to-r from-cyan-500 via-primary-base to-purple-500 bg-clip-text text-transparent">LPBrower</span>
             </span>
             {/* Search icon + sidebar collapse icon neatly paired in the header. */}
             <div className="ml-auto flex items-center gap-0.5">
@@ -1045,7 +1045,7 @@ export function Sidebar() {
                 tooltipSide="bottom"
                 shortcut={capOf(command("app.palette"))}
                 aria-keyshortcuts={ariaOf(command("app.palette"))}
-                icon={<SearchIcon className="size-3.5" />}
+                icon={<SearchIcon className="size-4" />}
                 onClick={() => usePalette.getState().setOpen(true)}
               />
               <IconButton
@@ -1055,7 +1055,7 @@ export function Sidebar() {
                 tooltipSide="bottom"
                 shortcut={capOf(command("app.toggleSidebar"))}
                 aria-keyshortcuts={ariaOf(command("app.toggleSidebar"))}
-                icon={<SidebarIcon className="size-3.5" />}
+                icon={<SidebarIcon className="size-4" />}
                 onClick={toggle}
               />
             </div>
@@ -1072,7 +1072,7 @@ export function Sidebar() {
               size="small"
               data-nav="search"
               data-tour="search"
-              icon={<SearchIcon className="size-3.5" />}
+              icon={<SearchIcon className="size-[18px]" />}
               label={t("sidebar.search")}
               collapsed
               shortcut={capOf(command("app.palette"))}
@@ -1081,11 +1081,11 @@ export function Sidebar() {
             />
           )}
           <AllProfilesItem compact={compact} />
-          <PageItem id="proxies" label={t("sidebar.navProxies")} icon={<RouteIcon className="size-4" />} compact={compact} />
-          <PageItem id="fingerprints" label={t("sidebar.navFingerprints")} icon={<NavFingerprintsIcon className="size-4" />} compact={compact} />
+          <PageItem id="proxies" label={t("sidebar.navProxies")} icon={<RouteIcon className="size-[22px]" />} compact={compact} />
+          <PageItem id="fingerprints" label={t("sidebar.navFingerprints")} icon={<NavFingerprintsIcon className="size-[22px]" />} compact={compact} />
           <ExtensionsItem compact={compact} />
-          <PageItem id="bookmarks" label={t("sidebar.navBookmarks")} icon={<NavBookmarksIcon className="size-3.5" />} compact={compact} />
-          <PageItem id="automation" label={t("sidebar.navProjects")} icon={<NavAutomationIcon className="size-3.5" />} compact={compact} />
+          <PageItem id="bookmarks" label={t("sidebar.navBookmarks")} icon={<NavBookmarksIcon className="size-[18px]" />} compact={compact} />
+          <PageItem id="automation" label={t("sidebar.navProjects")} icon={<NavAutomationIcon className="size-[18px]" />} compact={compact} />
         </div>
         {/* The lists that grow with the user's data scroll on their own. */}
         <ScrollArea>
@@ -1104,8 +1104,8 @@ export function Sidebar() {
       <div data-sidebar-footer className="flex shrink-0 flex-col gap-0.5 p-2">
         <SpaceItem compact={compact} />
         {/* In a team its Trash is the team's, for its admin and a member who sees rows in it. */}
-        {(!team || teamTrash) && <PageItem id="trash" label={t("sidebar.navTrash")} icon={<NavTrashIcon className="size-3.5" />} compact={compact} />}
-        <PageItem id="settings" label={t("sidebar.navSettings")} icon={<NavSettingsIcon className="size-3.5" />} compact={compact} />
+        {(!team || teamTrash) && <PageItem id="trash" label={t("sidebar.navTrash")} icon={<NavTrashIcon className="size-[18px]" />} compact={compact} />}
+        <PageItem id="settings" label={t("sidebar.navSettings")} icon={<NavSettingsIcon className="size-[18px]" />} compact={compact} />
         <VersionItem compact={compact} />
         <ApiStatus compact={compact} />
       </div>

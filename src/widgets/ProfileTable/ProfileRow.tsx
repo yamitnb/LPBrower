@@ -325,7 +325,7 @@ export const ProfileRow = memo(function ProfileRow({ profile, proxy, top, column
                   // Muted after the name, as the pin: said by word too, for a screen reader.
                   <Tooltip content={t("profileRow.protected")} warm={false} delay={700}>
                     <span data-protected className="inline-flex shrink-0 text-icon-soft-400">
-                      <PasswordIcon aria-hidden="true" className="size-3.5" />
+                      <PasswordIcon aria-hidden="true" className="size-[18px]" />
                       <span className="sr-only">{t("profileRow.protected")}</span>
                     </span>
                   </Tooltip>
