@@ -255,11 +255,17 @@ pub struct Ops {
 impl Ops {
     /// The real file system, unzip, process table and disk.
     pub fn real(layout: &Layout) -> Ops {
-        let binary = layout.live().join(&layout.binary);
+        let default_binary = layout.binary.clone();
         Ops {
             extract: Box::new(unzip),
             free_bytes: Box::new(os::free_bytes),
             holders: Box::new(move |live| {
+                let branded = live.join("LPBrowser.app/Contents/MacOS/LPBrowser");
+                let binary = if cfg!(target_os = "macos") && branded.exists() {
+                    branded
+                } else {
+                    live.join(&default_binary)
+                };
                 let mut h = os::holders(live, &binary);
                 // Profiles started on this engine count even where the scan cannot see them.
                 let tracked = if super::bundled_engine_in_use() {
@@ -321,7 +327,7 @@ pub fn room(ops: &Ops, dir: &Path, need: u64) -> Result<(), Failure> {
         Some(free) if free < need => Err(Failure::new(
             Stage::Space,
             format!(
-                "Not enough free disk space to update the LPBrower engine: it needs about {}, and {} is free on the disk with {}. Free up space and try again; the engine you have was not touched.",
+                "Not enough free disk space to update the LPBrowser engine: it needs about {}, and {} is free on the disk with {}. Free up space and try again; the engine you have was not touched.",
                 mb(need),
                 mb(free),
                 dir.display()
@@ -339,12 +345,20 @@ fn mb(n: u64) -> String {
 pub fn version_in(tree: &Path, marker: Marker) -> Option<String> {
     match marker {
         Marker::MacFramework => {
-            let versions = tree
-                .join("ShardX.app/Contents/Frameworks/ShardX Framework.framework/Versions");
-            fs::read_dir(versions).ok()?.flatten().find_map(|e| {
-                let name = e.file_name().to_string_lossy().to_string();
-                (name != "Current" && name.starts_with(|c: char| c.is_ascii_digit())).then_some(name)
-            })
+            for app in ["LPBrowser.app", "ShardX.app"] {
+                let versions = tree
+                    .join(app)
+                    .join("Contents/Frameworks/ShardX Framework.framework/Versions");
+                if let Ok(rd) = fs::read_dir(versions) {
+                    if let Some(ver) = rd.flatten().find_map(|e| {
+                        let name = e.file_name().to_string_lossy().to_string();
+                        (name != "Current" && name.starts_with(|c: char| c.is_ascii_digit())).then_some(name)
+                    }) {
+                        return Some(ver);
+                    }
+                }
+            }
+            None
         }
         // The stem has to read as a dotted version, so a stray file cannot pass.
         Marker::WinManifest => fs::read_dir(tree).ok()?.flatten().find_map(|e| {
@@ -360,10 +374,11 @@ pub fn version_in(tree: &Path, marker: Marker) -> Option<String> {
 
 /// The binary there and not empty, and the version marker where there is one.
 pub fn verify(layout: &Layout, tree: &Path) -> Result<Option<String>, String> {
+    let has_bin = |p: &Path| fs::metadata(p).is_ok_and(|m| m.is_file() && m.len() > 0);
     let bin = tree.join(&layout.binary);
-    match fs::metadata(&bin) {
-        Ok(m) if m.is_file() && m.len() > 0 => {}
-        _ => return Err(format!("the engine has no {}", Path::new(&layout.root).join(&layout.binary).display())),
+    let branded_mac = tree.join("LPBrowser.app/Contents/MacOS/LPBrowser");
+    if !has_bin(&bin) && !(layout.marker == Marker::MacFramework && has_bin(&branded_mac)) {
+        return Err(format!("the engine has no {}", Path::new(&layout.root).join(&layout.binary).display()));
     }
     let version = version_in(tree, layout.marker);
     if layout.marker != Marker::None && version.is_none() {

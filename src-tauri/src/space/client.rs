@@ -770,7 +770,7 @@ impl WireFault {
     fn words(&self, base: &str) -> String {
         match self {
             WireFault::NoSwitch => format!("{base} does not answer as an encrypted team server: it is not one, or it is older than this launcher"),
-            WireFault::Newer => format!("{base} is a newer team server than this launcher: update ShardBrowser"),
+            WireFault::Newer => format!("{base} is a newer team server than this launcher: update LPBrowser"),
             WireFault::OtherKey => format!("{base} is not this team's server: it shows another key. If the server was set up anew, paste a new invite"),
         }
     }
@@ -1389,7 +1389,7 @@ mod tests {
             }
         });
         let e = TeamClient::new(&at, "stm_x", "d").unwrap().call(Method::GET, "/health", None).await.unwrap_err();
-        assert_eq!(e.to_string(), format!("{at} is a newer team server than this launcher: update ShardBrowser"));
+        assert_eq!(e.to_string(), format!("{at} is a newer team server than this launcher: update LPBrowser"));
     }
 
     #[tokio::test(flavor = "multi_thread")]

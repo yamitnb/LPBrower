@@ -133,6 +133,7 @@ pub(crate) fn is_newer(latest: &str, current: &str) -> bool {
 /// Directory under app data where downloaded launcher updates are staged.
 fn updates_dir() -> Result<PathBuf, String> {
     let parent = dirs::data_dir().ok_or("platform data dir not available")?;
+    #[cfg(not(test))]
     crate::store::migrate_legacy_dir(&parent);
     Ok(parent.join(crate::store::APP_DIR_NAME).join("updates"))
 }
@@ -165,6 +166,7 @@ fn detect_windows_installed(exe_path: &Path) -> bool {
         if lower.contains("\\program files\\")
             || lower.contains("\\program files (x86)\\")
             || lower.ends_with("\\appdata\\local\\lpbrower launcher")
+            || lower.ends_with("\\appdata\\local\\lpbrowser")
         {
             return true;
         }

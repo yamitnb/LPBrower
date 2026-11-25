@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "LPBrower Launcher",
+  "productName": "LPBrowser",
   "version": "2.1.6",
   "identifier": "com.lpbrower.launcher",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "LPBrower Launcher",
+        "title": "LPBrowser",
         "width": 1280,
         "height": 800,
         "minWidth": 1024,

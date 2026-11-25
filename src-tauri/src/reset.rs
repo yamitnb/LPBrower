@@ -261,11 +261,11 @@ pub struct PlanView {
 
 pub fn plan(l: &Layout) -> Result<Plan> {
     if l.config.file_name() != Some(OsStr::new(CONFIG_NAME)) {
-        bail!("Nothing was moved: {} is not ShardBrowser’s settings folder.", l.config.display());
+        bail!("Nothing was moved: {} is not LPBrowser’s settings folder.", l.config.display());
     }
     let config = safe_root(&l.config, l)?;
     if config.file_name() != Some(OsStr::new(CONFIG_NAME)) || !is_file(&config, CONFIG_MARKER) {
-        bail!("Nothing was moved: {} doesn’t look like ShardBrowser’s settings folder.", config.display());
+        bail!("Nothing was moved: {} doesn’t look like LPBrowser’s settings folder.", config.display());
     }
     let home_spot = config.parent().context("the settings folder has no folder above it")?.to_path_buf();
     let data = safe_root(&l.data, l)?;
@@ -276,7 +276,7 @@ pub fn plan(l: &Layout) -> Result<Plan> {
             bail!("Nothing was moved: the data folder {} holds other folders too.", data.display());
         }
         if exact_dir(&data, DATA_MARKER).is_none() {
-            bail!("Nothing was moved: {} doesn’t look like ShardBrowser’s data folder.", data.display());
+            bail!("Nothing was moved: {} doesn’t look like LPBrowser’s data folder.", data.display());
         }
         Some(data)
     };
@@ -563,11 +563,11 @@ fn note(backups: &[PathBuf], what: &str, from: &Path, to: &Path) {
 
 fn readme(j: &Journal, stamp: &str, this: &Path) -> String {
     let mut s = format!(
-        "ShardBrowser moved this data aside when you chose Delete all data ({stamp}). Nothing in it was deleted.\n\n\
+        "LPBrowser moved this data aside when you chose Delete all data ({stamp}). Nothing in it was deleted.\n\n\
          RECOVERY.txt lists every item: where it is in this folder, then where it came from, and whether it was moved or put back.\n\
-         To put the data back: quit ShardBrowser, move each item that is here back where it came from, and start ShardBrowser again.\n\
+         To put the data back: quit LPBrowser, move each item that is here back where it came from, and start LPBrowser again.\n\
          An item listed but missing here was never moved: leave the original where it is.\n\
-         After a restart ShardBrowser makes a new, empty settings.json, profiles and user-data: replace those with the ones here.\n"
+         After a restart LPBrowser makes a new, empty settings.json, profiles and user-data: replace those with the ones here.\n"
     );
     for other in j.backups.iter().filter(|b| b.as_path() != this) {
         s.push_str(&format!("\nThe rest of this reset is in {}.\n", other.display()));
@@ -578,7 +578,7 @@ fn readme(j: &Journal, stamp: &str, this: &Path) -> String {
 
 fn recovery(j: &Journal, stamp: &str) -> String {
     let mut s = format!(
-        "ShardBrowser Delete all data, {stamp}. Each line: what happened, where the item is in the backup, and where it came from.\n\
+        "LPBrowser Delete all data, {stamp}. Each line: what happened, where the item is in the backup, and where it came from.\n\
          To put an item back by hand, move it from the first path to the second.\n\n"
     );
     for step in &j.steps {
@@ -833,7 +833,7 @@ fn execute(plan: &Plan, stamp: &str, before: &mut dyn FnMut(&JStep) -> Result<()
     // for one that never moved: nothing is put back, and the journal stays.
     if let Some(gone) = unreachable(&j).first() {
         bail!(
-            "Some data is still in {}: {e:#}. Connect the disk with {}; when ShardBrowser starts again, it offers to undo or finish the reset.",
+            "Some data is still in {}: {e:#}. Connect the disk with {}; when LPBrowser starts again, it offers to undo or finish the reset.",
             all(),
             gone.display()
         );
@@ -893,7 +893,7 @@ fn read_journal(config: &Path) -> Result<Option<Journal>> {
     if !exists(&path) {
         return Ok(None);
     }
-    let unreadable = || format!("ShardBrowser can’t read its notes on the reset ({})", path.display());
+    let unreadable = || format!("LPBrowser can’t read its notes on the reset ({})", path.display());
     let j: Journal = serde_json::from_slice(&fs::read(&path).with_context(unreadable)?).with_context(unreadable)?;
     let trusted = j.config == config
         && j.roots.first() == Some(&j.config)
@@ -911,7 +911,7 @@ fn read_journal(config: &Path) -> Result<Option<Journal>> {
             JStep::Drop { dir } => j.roots.iter().any(|r| dir.starts_with(r) && dir != r),
         });
     if !trusted {
-        bail!("ShardBrowser can’t trust its notes on the reset ({}). Nothing was changed.", path.display());
+        bail!("LPBrowser can’t trust its notes on the reset ({}). Nothing was changed.", path.display());
     }
     Ok(Some(j))
 }
@@ -1161,7 +1161,7 @@ fn safe_root(path: &Path, l: &Layout) -> Result<PathBuf> {
         .home
         .as_deref()
         .and_then(|h| fs::canonicalize(h).ok())
-        .context("Nothing was moved: ShardBrowser can’t find your home folder.")?;
+        .context("Nothing was moved: LPBrowser can’t find your home folder.")?;
     if home.starts_with(&root) {
         bail!("Nothing was moved: {} is your home folder or holds it.", root.display());
     }
@@ -1369,7 +1369,7 @@ pub async fn app_reset(plan_id: String) -> Result<ResetDone, String> {
         return Err(CHANGED.into());
     };
     if crate::migrate::reset_pending() {
-        return Err("Nothing was moved: a reset didn’t finish. Restart ShardBrowser to undo or finish it.".into());
+        return Err("Nothing was moved: a reset didn’t finish. Restart LPBrowser to undo or finish it.".into());
     }
     let Some(held) = Held::take() else {
         return Err("Nothing was moved: your data is being moved. Try again when that finishes.".into());
@@ -1441,7 +1441,7 @@ pub async fn app_reset_keep_storage(
         return Err("not a backup this reset made".into());
     }
     let body = serde_json::json!({
-        "about": "ShardBrowser's window storage as it was before Delete all data: \
+        "about": "LPBrowser's window storage as it was before Delete all data: \
                   Tags, Views, folder colours and order, list layouts. Each item \
                   is one localStorage key and its value.",
         "items": items,
@@ -2154,7 +2154,7 @@ mod tests {
         put(&other.join(format!("Extensions/{EXT}/x")), "firefox's");
         let l = Layout { data: other.clone(), ..layout(&fx) };
         let e = reset(&l).unwrap_err().to_string();
-        assert!(e.contains("doesn’t look like ShardBrowser’s data folder"), "{e}");
+        assert!(e.contains("doesn’t look like LPBrowser’s data folder"), "{e}");
         assert!(other.join(format!("Profiles/{P9}.json")).exists());
         assert!(other.join(format!("Extensions/{EXT}/x")).exists());
         assert!(fx.config.join("settings.json").exists());

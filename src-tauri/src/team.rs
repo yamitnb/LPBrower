@@ -457,7 +457,7 @@ pub async fn join(server: &str, token: &str) -> Result<SpaceState> {
         Err(e) => bail!(join_refused(&base, &e)),
     };
     if !crate::space::perm::is_key(&me.perm_key) {
-        bail!("{base} gave no key to check permissions with: is it a ShardBrowser team server?");
+        bail!("{base} gave no key to check permissions with: is it an LPBrowser team server?");
     }
     if c.server_key().as_deref() != Some(me.perm_key.as_str()) {
         bail!("{base} checks permissions with another key than the one it proved itself with");
@@ -497,10 +497,10 @@ fn join_refused(base: &str, e: &TeamError) -> String {
         (Some(Code::Unauthorized | Code::UnknownToken), _) => "the server does not know this token".into(),
         (Some(Code::TokenReplaced), _) => "the server does not know this token: it was replaced by a new one".into(),
         (Some(Code::SwitchedOff), _) => "this member is switched off on the server".into(),
-        (_, Some(404)) => format!("{base} is not a ShardBrowser team server"),
+        (_, Some(404)) => format!("{base} is not an LPBrowser team server"),
         (_, None) => match e {
             TeamError::Offline(_) => format!("{base} did not answer"),
-            _ => format!("{base} is not a ShardBrowser team server"),
+            _ => format!("{base} is not an LPBrowser team server"),
         },
         _ => format!("{base}: {e}"),
     }

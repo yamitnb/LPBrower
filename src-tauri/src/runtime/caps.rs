@@ -110,18 +110,41 @@ fn has_marker(bin: &Path, marker: &[u8]) -> bool {
     found
 }
 
-/// Every file the engine may run its code from: each version of the macOS framework named
-/// after the stub, each Windows chrome.dll beside chrome.exe or in a version folder, else `bin`.
+/// Every file the engine may run its code from: each version of the Chromium framework
+/// (`{stub} Framework.framework` or `<Product> Framework.framework` when the outer stub
+/// was renamed from `ShardX` to `LPBrowser`), each Windows chrome.dll beside chrome.exe
+/// or in a version folder, else `bin`.
 fn code_files(bin: &Path) -> Vec<PathBuf> {
     let dir = bin.parent().unwrap_or(Path::new(""));
-    if let (Some(contents), Some(stub)) = (dir.parent().filter(|_| dir.file_name().is_some_and(|n| n == "MacOS")), bin.file_name()) {
-        let name = format!("{} Framework", stub.to_string_lossy());
-        let fw = contents.join("Frameworks").join(format!("{name}.framework"));
-        let mut out: Vec<PathBuf> = read_dir(&fw.join("Versions")).into_iter().map(|v| v.join(&name)).collect();
+    if let (Some(contents), Some(stub)) = (
+        dir.parent().filter(|_| dir.file_name().is_some_and(|n| n == "MacOS")),
+        bin.file_name(),
+    ) {
+        let frameworks = contents.join("Frameworks");
+        let stub_name = format!("{} Framework", stub.to_string_lossy());
+        let collect_fw = |fw: &Path, name: &str| -> Vec<PathBuf> {
+            let mut out: Vec<PathBuf> =
+                read_dir(&fw.join("Versions")).into_iter().map(|v| v.join(name)).collect();
+            if out.is_empty() {
+                out.push(fw.join(name));
+            }
+            out.retain(|p| p.is_file());
+            out
+        };
+        let mut out = collect_fw(&frameworks.join(format!("{stub_name}.framework")), &stub_name);
         if out.is_empty() {
-            out.push(fw.join(&name));
+            for fw in read_dir(&frameworks) {
+                if fw.extension().and_then(|e| e.to_str()) != Some("framework") {
+                    continue;
+                }
+                let Some(stem) = fw.file_stem().map(|s| s.to_string_lossy().into_owned()) else {
+                    continue;
+                };
+                if stem.ends_with(" Framework") {
+                    out.extend(collect_fw(&fw, &stem));
+                }
+            }
         }
-        out.retain(|p| p.is_file());
         if !out.is_empty() {
             return out;
         }
@@ -259,6 +282,17 @@ mod tests {
         // An old version left beside it: the stub may be the one that loads it.
         write(&fw.join("Versions/155.0.7000.1/ShardX Framework"), &code(false));
         assert!(!loads_extensions_alone(&stub));
+    }
+
+    #[test]
+    fn a_rebranded_mac_stub_still_reads_shardx_framework() {
+        let d = dir("mac-rebranded");
+        let app = d.join("ShardX-Mac-arm64/LPBrowser.app/Contents");
+        let stub = write(&app.join("MacOS/LPBrowser"), &code(false));
+        let fw = app.join("Frameworks/ShardX Framework.framework");
+        write(&fw.join("Versions/158.0.8127.36/ShardX Framework"), &code(true));
+        write(&app.join("Frameworks/Other.framework/Versions/A/Other"), &code(false));
+        assert!(loads_extensions_alone(&stub));
     }
 
     #[test]

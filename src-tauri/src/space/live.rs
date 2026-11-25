@@ -613,7 +613,7 @@ mod tests {
         let err = team::join(&srv.url, "stm_nobody").await.unwrap_err().to_string();
         assert!(err.contains("does not know this token"), "{err}");
         let err = team::join(&format!("{}/nothing", srv.url), &vera.token).await.unwrap_err().to_string();
-        assert!(err.contains("not a ShardBrowser team server"), "{err}");
+        assert!(err.contains("not an LPBrowser team server"), "{err}");
         let err = team::join("http://127.0.0.1:1", &vera.token).await.unwrap_err().to_string();
         assert!(err.contains("did not answer"), "{err}");
         assert!(team::state().unwrap().teams.is_empty(), "a failed join keeps nothing");

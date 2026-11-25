@@ -20,7 +20,7 @@ const KNOWN: ReadonlyArray<readonly [RegExp, () => string]> = [
   [/\bis not this team.s server: it shows another key\b/i, () => t("team.errOtherKey")],
   [/\bcould not prove it is the server this token is from\b|\bchecks permissions with another key\b/i, () => t("team.errUnproven")],
   [/\bdid not answer\b/i, () => t("team.errOffline")],
-  [/\bnot a ShardBrowser team server\b|\bgave no key to check permissions\b/i, () => t("team.errNotTeamServer")],
+  [/\bnot (?:a ShardBrowser|an LPBrowser) team server\b|\bgave no key to check permissions\b/i, () => t("team.errNotTeamServer")],
   [/\ba team name is 1 to 64 characters\b/i, () => t("team.errTeamName")],
   [/\ba name or label is too long\b/i, () => t("team.errTooLong")],
   [/^not allowed$|\bonly the team.s admin\b/i, () => t("team.errNotAdmin")],

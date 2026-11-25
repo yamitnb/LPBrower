@@ -3537,7 +3537,7 @@ pub fn run() {
                 if let Some(icon) = brand_window_icon.clone().or_else(|| app.default_window_icon().cloned()) {
                     let builder = TrayIconBuilder::with_id("main").icon(icon);
                     builder
-                        .tooltip("LPBrower Launcher")
+                        .tooltip("LPBrowser")
                         .menu(&menu)
                         // macOS opens the menu on any click (the tray library keeps it attached),
                         // as menu bar extras do there; elsewhere a left click shows the window.
@@ -3659,6 +3659,11 @@ pub fn run() {
                     if let Some(engine_dir) = bin.parent() {
                         brand_engine::ensure_branded(engine_dir);
                     }
+                    let bin = if bin.exists() {
+                        bin
+                    } else {
+                        launch::resolve_binary().unwrap_or(bin)
+                    };
                     let _ = runtime::engine_loads_extensions_alone(&bin);
                 }
             });
@@ -3834,17 +3839,32 @@ fn with_app_menu(b: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
     b
 }
 
-/// The stock macOS menu with its Quit swapped for one that asks `quit`.
+/// The stock macOS menu with the Application menu cleanly branded as `LPBrowser`
+/// (instead of `CARGO_PKG_NAME`) and Quit routed through our unsaved-changes guard.
 #[cfg(target_os = "macos")]
 fn app_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
-    use tauri::menu::{Menu, MenuItem, MenuItemKind};
+    use tauri::menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
     let menu = Menu::default(app)?;
+    let brand = "LPBrowser";
     if let Some(MenuItemKind::Submenu(first)) = menu.items()?.into_iter().next() {
-        if let Some(stock) = first.items()?.last() {
-            first.remove(stock)?;
-        }
-        let label = format!("Quit {}", app.package_info().name);
-        first.append(&MenuItem::with_id(app, "app_quit", label, true, Some("CmdOrCtrl+Q"))?)?;
+        let app_sub = Submenu::with_items(
+            app,
+            brand,
+            true,
+            &[
+                &PredefinedMenuItem::about(app, Some(&format!("About {brand}")), None)?,
+                &PredefinedMenuItem::separator(app)?,
+                &PredefinedMenuItem::services(app, None)?,
+                &PredefinedMenuItem::separator(app)?,
+                &PredefinedMenuItem::hide(app, Some(&format!("Hide {brand}")))?,
+                &PredefinedMenuItem::hide_others(app, None)?,
+                &PredefinedMenuItem::show_all(app, None)?,
+                &PredefinedMenuItem::separator(app)?,
+                &MenuItem::with_id(app, "app_quit", format!("Quit {brand}"), true, Some("CmdOrCtrl+Q"))?,
+            ],
+        )?;
+        menu.remove(&first)?;
+        menu.prepend(&app_sub)?;
     }
     Ok(menu)
 }

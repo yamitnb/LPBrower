@@ -30,16 +30,21 @@ pub fn resolve_binary() -> Result<PathBuf> {
         }
     }
     #[cfg(target_os = "macos")]
-    let guess = "/Applications/ShardX.app/Contents/MacOS/ShardX";
+    let guesses: &[&str] = &[
+        "/Applications/LPBrowser.app/Contents/MacOS/LPBrowser",
+        "/Applications/ShardX.app/Contents/MacOS/ShardX",
+    ];
     #[cfg(target_os = "windows")]
-    let guess = "C:\\Program Files\\ShardX\\ShardX.exe";
+    let guesses: &[&str] = &["C:\\Program Files\\LPBrowser\\chrome.exe", "C:\\Program Files\\ShardX\\ShardX.exe"];
     #[cfg(target_os = "linux")]
-    let guess = "/opt/shardx/shardx";
-    let pb = PathBuf::from(guess);
-    if pb.exists() {
-        return Ok(pb);
+    let guesses: &[&str] = &["/opt/lpbrowser/chrome", "/opt/shardx/shardx"];
+    for guess in guesses {
+        let pb = PathBuf::from(guess);
+        if pb.exists() {
+            return Ok(pb);
+        }
     }
-    anyhow::bail!("LPBrower browser engine not installed yet — open Settings to download, or configure Browser path manually")
+    anyhow::bail!("LPBrowser engine not installed yet — open Settings to download, or configure Browser path manually")
 }
 
 /// Why a launch is refused while the data lock (migrate.rs) is held.
@@ -719,12 +724,18 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
         if let Some(engine_dir) = bin_for_prep.parent() {
             crate::brand_engine::ensure_branded(engine_dir);
         }
+        // Re-resolve if macOS branding just renamed ShardX.app -> LPBrowser.app.
+        let effective_bin = if bin_for_prep.exists() {
+            bin_for_prep
+        } else {
+            resolve_binary().unwrap_or(bin_for_prep)
+        };
         crate::brand_engine::migrate_profile_prefs(&udd_for_prep);
         if enable_cdp_for_prep {
             let _ = std::fs::remove_file(udd_for_prep.join("DevToolsActivePort"));
         }
         let ext_alone = if check_ext_alone {
-            crate::runtime::engine_loads_extensions_alone(&bin_for_prep)
+            crate::runtime::engine_loads_extensions_alone(&effective_bin)
         } else {
             false
         };
@@ -759,7 +770,7 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
         let widevine_cached = store::widevine_cache_dir()
             .map(|d| d.join("manifest.json").is_file())
             .unwrap_or(false);
-        (ext_alone, icon, widevine_cached)
+        (effective_bin, ext_alone, icon, widevine_cached)
     });
 
     // Run UDP capability probe, cached/fast geo lookup, local proxy tunnel pre-warming,
@@ -812,7 +823,8 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
 
     let (proxy_udp_ok, live_geo, eager_tunnel, prep_res) =
         tokio::join!(udp_fut, geo_fut, eager_tunnel_fut, prep_task);
-    let (ext_alone, icon, widevine_cached) = prep_res.unwrap_or((false, None, false));
+    let (effective_bin, ext_alone, icon, widevine_cached) =
+        prep_res.unwrap_or_else(|_| (bin.to_path_buf(), false, None, false));
 
     // If SOCKS5 had no cached UDP status before `udp_fut` ran and turned out not to
     // relay UDP, route it through the local HTTP tunnel so Chromium never fires
@@ -899,7 +911,7 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
     // A team's profile has no launch count of its own here.
     let touch = !matches!(exit, ExitHook::Remote(_));
 
-    let mut cmd = tokio::process::Command::new(bin);
+    let mut cmd = tokio::process::Command::new(&effective_bin);
     cmd.args(&args);
     cmd.stdout(Stdio::null()).stderr(Stdio::null());
     #[cfg(target_os = "windows")]

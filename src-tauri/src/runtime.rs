@@ -53,21 +53,21 @@ pub fn host_spec() -> Option<PlatformSpec> {
     return Some(PlatformSpec {
         browser: ArchiveSpec {
             key: "ShardX-Mac-arm64.zip".into(),
-            label: "LPBrower engine (macOS arm64)".into(),
+            label: "LPBrowser engine (macOS arm64)".into(),
         },
     });
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
     return Some(PlatformSpec {
         browser: ArchiveSpec {
             key: "ShardX-Windows.zip".into(),
-            label: "LPBrower engine (Windows x64)".into(),
+            label: "LPBrowser engine (Windows x64)".into(),
         },
     });
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     return Some(PlatformSpec {
         browser: ArchiveSpec {
             key: "ShardX-Linux.zip".into(),
-            label: "LPBrower engine (Linux x64)".into(),
+            label: "LPBrowser engine (Linux x64)".into(),
         },
     });
     #[allow(unreachable_code)]
@@ -92,12 +92,34 @@ pub fn runtime_dir() -> Result<PathBuf> {
 pub fn binary_path() -> Result<PathBuf> {
     let base = runtime_dir()?;
     #[cfg(target_os = "macos")]
-    return Ok(base
-        .join("ShardX-Mac-arm64")
-        .join("ShardX.app")
-        .join("Contents")
-        .join("MacOS")
-        .join("ShardX"));
+    {
+        let root = base.join("ShardX-Mac-arm64");
+        let branded = root
+            .join("LPBrowser.app")
+            .join("Contents")
+            .join("MacOS")
+            .join("LPBrowser");
+        if branded.exists() {
+            return Ok(branded);
+        }
+        let legacy_exec = root
+            .join("LPBrowser.app")
+            .join("Contents")
+            .join("MacOS")
+            .join("ShardX");
+        if legacy_exec.exists() {
+            return Ok(legacy_exec);
+        }
+        let unbranded = root
+            .join("ShardX.app")
+            .join("Contents")
+            .join("MacOS")
+            .join("ShardX");
+        if unbranded.exists() {
+            return Ok(unbranded);
+        }
+        return Ok(branded);
+    }
     #[cfg(target_os = "windows")]
     return Ok(base.join("ShardX-Windows").join("chrome.exe"));
     #[cfg(target_os = "linux")]
@@ -216,7 +238,7 @@ pub fn swapping() -> bool {
     SWAPPING.load(Ordering::SeqCst)
 }
 
-pub const UPDATING: &str = "The LPBrower engine is being updated. Try again in a moment.";
+pub const UPDATING: &str = "The LPBrowser engine is being updated. Try again in a moment.";
 
 /// Profiles started by this launcher run the bundled engine (no Browser path set).
 fn bundled_engine_in_use() -> bool {
@@ -1634,7 +1656,7 @@ pub async fn runtime_install(window: Window, force: bool) -> Result<RuntimeStatu
     // Refused rather than installed: this build could not configure it.
     if engine_needs_newer_launcher(&manifest) {
         return Err(format!(
-            "This engine build needs LPBrower Launcher {} or newer — you are on {}. Update the launcher first.",
+            "This engine build needs LPBrowser {} or newer — you are on {}. Update the launcher first.",
             manifest.min_launcher_version.as_deref().unwrap_or("?"),
             launcher_version(),
         ));

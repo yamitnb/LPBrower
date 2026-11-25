@@ -76,7 +76,7 @@ pub fn run(app: &tauri::AppHandle, dst: &Path) -> Result<u64> {
 /// The move, telling its progress to `emit`.
 pub(crate) fn run_with(dst: &Path, emit: &dyn Fn(Progress)) -> Result<u64> {
     if reset_pending() {
-        anyhow::bail!("a reset didn’t finish: restart ShardBrowser to undo or finish it first");
+        anyhow::bail!("a reset didn’t finish: restart LPBrowser to undo or finish it first");
     }
     if MIGRATING.swap(true, Ordering::SeqCst) {
         anyhow::bail!("a migration is already running");

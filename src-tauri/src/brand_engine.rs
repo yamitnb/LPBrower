@@ -1,11 +1,13 @@
-//! Re-brands the downloaded Chromium runtime directory to LPBrower in-place:
+//! Re-brands the downloaded Chromium runtime directory to LPBrowser in-place:
 //! - Patches `locales/*.pak` (Windows/Linux) and `*.lproj/locale.pak` (macOS) UI strings
 //! - Patches `chrome_100_percent.pak` and `chrome_200_percent.pak` product logo PNGs
 //! - Patches `chrome.dll` (Windows), `ShardX Framework` (macOS), or `chrome` (Linux) start page
 //!   HTML, startup URL (`chrome://newtab/`), window title prefix, CLI version, and error text
-//! - On Windows, replaces PE icons (`chrome.exe`, `notification_helper.exe`) with LPBrower's ICO
-//! - On macOS, updates `Info.plist` display names, replaces `Resources/app.icns` with LPBrower's
-//!   ICNS, clears quarantine xattrs, and re-signs `ShardX.app` ad-hoc so Apple Silicon runs cleanly.
+//! - On Windows, replaces PE icons (`chrome.exe`, `notification_helper.exe`) with LPBrowser's ICO
+//! - On macOS, renames `ShardX.app` -> `LPBrowser.app` and `Contents/MacOS/ShardX` -> `Contents/MacOS/LPBrowser`,
+//!   updates `Info.plist` & `InfoPlist.strings` display names, replaces `Resources/app.icns` and
+//!   `product_logo_32.png`, removes `Assets.car`, clears quarantine xattrs, re-signs ad-hoc, and
+//!   refreshes LaunchServices so Dock / Menu Bar / Notification Center show LPBrowser cleanly.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -14,7 +16,7 @@ use std::path::{Path, PathBuf};
 #[path = "ntp_template.rs"]
 mod ntp_template;
 
-const MARKER_FILE: &str = ".lpbrower-branded-v9";
+const MARKER_FILE: &str = ".lpbrower-branded-v10";
 
 #[cfg(windows)]
 const ICO_BYTES: &[u8] = include_bytes!("../icons/browser-icon.ico");
@@ -30,9 +32,9 @@ const START_PAGE_HTML: &str = r#"<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>LPBrower</title>
+<title>LPBrowser</title>
 <style>
-/* LPBrower start page. One file, no network requests. */
+/* LPBrowser start page. One file, no network requests. */
 :root {
   --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei UI", sans-serif;
   --bg-page: #f5f5f5;
@@ -252,11 +254,11 @@ h2 {
         <path fill-rule="evenodd" clip-rule="evenodd" d="M8 2C8 1.44772 8.44772 1 9 1H13.8C16.948 1 19.5 3.552 19.5 6.7C19.5 9.848 16.948 12.4 13.8 12.4H11.5V15.5C11.5 16.0523 11.0523 16.5 10.5 16.5H8.5C7.94772 16.5 7.5 16.0523 7.5 15.5V2H8ZM11.5 4V9.4H13.8C15.291 9.4 16.5 8.191 16.5 6.7C16.5 5.209 15.291 4 13.8 4H11.5Z" fill="currentColor"/>
         <circle cx="13.8" cy="6.7" r="1.5" fill="currentColor"/>
       </svg>
-      <h1>LPBrower</h1>
+      <h1>LPBrowser</h1>
       <p class="lede">Anti-detect browser built for isolated profiles, fingerprints, and privacy.</p>
     </header>
 
-    <section class="features" aria-label="What LPBrower does">
+    <section class="features" aria-label="What LPBrowser does">
       <article class="feature feature--wide">
         <div class="feature-head">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -290,7 +292,7 @@ h2 {
             <path d="M5 15H17.3414C18.3472 15 18.8501 15 18.9753 15.3087C19.1004 15.6173 18.7448 15.9806 18.0336 16.7071L15.7891 19"/>
           </svg>
           <h2>SOCKS5 with UDP</h2>
-          <span class="chip chip--brand">LPBrower</span>
+          <span class="chip chip--brand">LPBrowser</span>
         </div>
         <p>Isolated proxy routing prevents WebRTC and QUIC from leaking your real IP over UDP, ensuring sites see only the profile's configured address.</p>
       </article>
@@ -302,7 +304,7 @@ h2 {
             <path d="M12 12L16.9497 7.05025C17.9829 6.01707 18.4995 5.50048 18.3867 4.75173C18.2739 4.00298 17.7382 3.7198 16.6667 3.15343C15.2736 2.41699 13.6855 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 10.5778 21.7031 9.22492 21.1679 8"/>
           </svg>
           <h2>Isolated Storage</h2>
-          <span class="chip chip--brand">LPBrower</span>
+          <span class="chip chip--brand">LPBrowser</span>
         </div>
         <p>Cookies, local storage, cache, extensions, and bookmarks stay strictly separated per profile for clean multi-account sessions.</p>
       </article>
@@ -321,10 +323,10 @@ h2 {
 </body>
 </html>"#;
 
-/// Ensure the extracted engine folder is branded as LPBrower.
+/// Ensure the extracted engine folder is branded as LPBrowser.
 /// Idempotent and fast (skips immediately when `MARKER_FILE` exists).
 /// Accepts either the engine root (`.../ShardX-Mac-arm64`, `.../ShardX-Windows`)
-/// or `bin.parent()` (`.../ShardX.app/Contents/MacOS`).
+/// or `bin.parent()` (`.../LPBrowser.app/Contents/MacOS` or `.../ShardX.app/Contents/MacOS`).
 pub fn ensure_branded(engine_dir: &Path) {
     if !engine_dir.is_dir() {
         return;
@@ -337,12 +339,12 @@ pub fn ensure_branded(engine_dir: &Path) {
             return;
         }
         if brand_macos_bundle(&app_bundle) {
-            if fs::write(&marker, "v9\n").is_err() {
+            if fs::write(&marker, "v10\n").is_err() {
                 if let Some(fb) = fallback_marker {
                     if let Some(parent) = fb.parent() {
                         let _ = fs::create_dir_all(parent);
                     }
-                    let _ = fs::write(&fb, "v9\n");
+                    let _ = fs::write(&fb, "v10\n");
                 }
             }
         }
@@ -406,16 +408,19 @@ pub fn ensure_branded(engine_dir: &Path) {
     }
 
     if all_ok {
-        let _ = fs::write(&marker, "v9\n");
+        let _ = fs::write(&marker, "v10\n");
     }
 }
 
 /// Locate `(marker_dir, app_bundle)` when `path` is either an engine root containing
-/// `ShardX.app` or a subdirectory inside `*.app/Contents/...` (such as `bin.parent()`).
+/// `LPBrowser.app` / `ShardX.app` or a subdirectory inside `*.app/Contents/...`
+/// (such as `bin.parent()`).
 fn resolve_macos_bundle(path: &Path) -> Option<(PathBuf, PathBuf)> {
-    let nested = path.join("ShardX.app");
-    if nested.join("Contents").is_dir() {
-        return Some((path.to_path_buf(), nested));
+    for app_name in ["LPBrowser.app", "ShardX.app"] {
+        let nested = path.join(app_name);
+        if nested.join("Contents").is_dir() {
+            return Some((path.to_path_buf(), nested));
+        }
     }
     for anc in path.ancestors() {
         if anc.extension().and_then(|e| e.to_str()) == Some("app") && anc.join("Contents").is_dir() {
@@ -434,7 +439,7 @@ fn macos_fallback_marker(app_bundle: &Path) -> Option<PathBuf> {
     }
     dirs::cache_dir().map(|c| {
         c.join(crate::store::APP_DIR_NAME)
-            .join(format!("branded-mac-{h:016x}.marker"))
+            .join(format!("branded-mac-v10-{h:016x}.marker"))
     })
 }
 
@@ -447,21 +452,47 @@ fn brand_macos_bundle(app_bundle: &Path) -> bool {
 
     let mut all_ok = true;
 
-    // 1. Update display names in Contents/Info.plist (preserving CFBundleExecutable).
+    // 1. Rename outer executable `Contents/MacOS/ShardX` -> `Contents/MacOS/LPBrowser`
+    //    so Activity Monitor, Dock, Force Quit, and macOS menu bar never display `ShardX`.
+    //    The outer Mach-O stub loads `@executable_path/../Frameworks/ShardX Framework.framework/...`
+    //    and does not depend on its own filename.
+    let macos_dir = contents.join("MacOS");
+    let old_exec = macos_dir.join("ShardX");
+    let new_exec = macos_dir.join("LPBrowser");
+    if old_exec.is_file() && !new_exec.exists() {
+        if let Err(e) = fs::rename(&old_exec, &new_exec) {
+            eprintln!("[brand_engine] macOS outer executable rename skipped: {e}");
+        }
+    }
+    let exec_is_lpbrowser = new_exec.is_file();
+
+    // 2. Update display names (and CFBundleExecutable when renamed) in outer Contents/Info.plist.
     let info_plist = contents.join("Info.plist");
     if info_plist.is_file() {
-        let _ = patch_plist_display_names(&info_plist, false);
+        let _ = patch_plist_display_names(&info_plist, true, exec_is_lpbrowser);
     }
 
-    // 2. Replace bundle .icns and localized InfoPlist.strings in Contents/Resources/.
+    // 3. Replace bundle .icns, delete Assets.car, and patch localized InfoPlist.strings /
+    //    AppleScript dictionary / Chromium policy manifest strings in Contents/Resources/.
     let res_dir = contents.join("Resources");
     if res_dir.is_dir() {
         replace_bundle_icns(&res_dir, &mut all_ok);
         let _ = fs::remove_file(res_dir.join("Assets.car"));
-        patch_macos_infoplist_strings(&res_dir);
+        patch_macos_infoplist_strings(&res_dir, true);
+        patch_text_brand_file(&res_dir.join("scripting.sdef"));
+        patch_text_brand_file(
+            &res_dir
+                .join("org.chromium.Chromium.manifest")
+                .join("Contents")
+                .join("Resources")
+                .join("en.lproj")
+                .join("Localizable.strings"),
+        );
     }
 
-    // 3. Patch Chromium Framework resources (*.lproj/locale.pak, scale paks, framework binary, helpers).
+    // 4. Patch Chromium Framework resources (*.lproj/locale.pak, scale paks, product_logo_32.png,
+    //    framework binary, helpers). Do NOT rename the Framework or Helper .app filenames/executables,
+    //    because Chromium resolves them by compile-time PRODUCT_FULLNAME_STRING.
     let frameworks_dir = contents.join("Frameworks");
     if let Ok(fw_entries) = fs::read_dir(&frameworks_dir) {
         for fw_ent in fw_entries.flatten() {
@@ -484,15 +515,19 @@ fn brand_macos_bundle(app_bundle: &Path) -> bool {
                 }
                 let fw_res = ver_path.join("Resources");
                 if fw_res.is_dir() {
+                    let logo_32 = fw_res.join("product_logo_32.png");
+                    if logo_32.is_file() {
+                        let _ = fs::write(&logo_32, LP_PNG_32);
+                    }
                     patch_scale_paks(&fw_res);
                     patch_resources_pak(&fw_res);
                     patch_locales(&fw_res);
                     patch_macos_lproj_locales(&fw_res);
-                    patch_macos_infoplist_strings(&fw_res);
+                    patch_macos_infoplist_strings(&fw_res, false);
                     for p_name in ["Info.plist", "app_mode-Info.plist"] {
                         let p = fw_res.join(p_name);
                         if p.is_file() {
-                            let _ = patch_plist_display_names(&p, false);
+                            let _ = patch_plist_display_names(&p, false, false);
                         }
                     }
                 }
@@ -522,13 +557,13 @@ fn brand_macos_bundle(app_bundle: &Path) -> bool {
                                 .is_some_and(|n| n.contains("Alert"));
                             let h_plist = hp.join("Contents").join("Info.plist");
                             if h_plist.is_file() {
-                                let _ = patch_plist_display_names(&h_plist, is_alerts);
+                                let _ = patch_plist_display_names(&h_plist, is_alerts, false);
                             }
                             let h_res = hp.join("Contents").join("Resources");
                             if h_res.is_dir() {
                                 replace_bundle_icns(&h_res, &mut all_ok);
                                 let _ = fs::remove_file(h_res.join("Assets.car"));
-                                patch_macos_infoplist_strings(&h_res);
+                                patch_macos_infoplist_strings(&h_res, is_alerts);
                             }
                         }
                     }
@@ -537,14 +572,34 @@ fn brand_macos_bundle(app_bundle: &Path) -> bool {
         }
     }
 
-    // 4. Re-sign modified Mach-O and .app bundle on macOS so Apple Silicon amfid allows execution.
+    // 5. Rename outer bundle `ShardX.app` -> `LPBrowser.app` so Finder, Dock, Cmd+Tab,
+    //    and LaunchServices never fall back to the `ShardX` folder name.
+    let mut active_app = app_bundle.to_path_buf();
+    if app_bundle.file_name().and_then(|n| n.to_str()) == Some("ShardX.app") {
+        if let Some(parent) = app_bundle.parent() {
+            let target = parent.join("LPBrowser.app");
+            if target.exists() {
+                let _ = fs::remove_dir_all(&target);
+            }
+            match fs::rename(app_bundle, &target) {
+                Ok(()) => active_app = target,
+                Err(e) => eprintln!("[brand_engine] macOS bundle rename ShardX.app -> LPBrowser.app skipped: {e}"),
+            }
+        }
+    }
+
+    // 6. Re-sign modified Mach-O and .app bundle on macOS so Apple Silicon amfid allows execution,
+    //    then refresh LaunchServices so macOS drops any stale cached ShardX icon/name.
     #[cfg(target_os = "macos")]
     {
-        if let Err(e) = resign_macos_bundle(app_bundle) {
+        if let Err(e) = resign_macos_bundle(&active_app) {
             eprintln!("[brand_engine] macOS ad-hoc codesign failed: {e}");
             all_ok = false;
         }
     }
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = &active_app;
 
     all_ok
 }
@@ -579,12 +634,13 @@ fn patch_macos_lproj_locales(resources_dir: &Path) {
             continue;
         }
         let _ = patch_pak_v5(&pak, |_rid, raw| {
-            if find_subslice(raw, b"Shard").is_none() {
+            if find_subslice(raw, b"Shard").is_none() && find_subslice(raw, b"LPBrower").is_none() {
                 return None;
             }
-            let r1 = replace_bytes_all(raw, b"ShardBrowser", b"LPBrower");
-            let r2 = replace_bytes_all(&r1, b"ShardX", b"LPBrower");
-            if r2 != raw { Some(r2) } else { None }
+            let r1 = replace_bytes_all(raw, b"ShardBrowser", b"LPBrowser");
+            let r2 = replace_bytes_all(&r1, b"ShardX", b"LPBrowser");
+            let r3 = replace_bytes_all(&r2, b"LPBrower", b"LPBrowser");
+            if r3 != raw { Some(r3) } else { None }
         });
     }
 }
@@ -610,11 +666,54 @@ fn replace_bundle_icns(res_dir: &Path, all_ok: &mut bool) {
     }
 }
 
-/// Patch localized `*.lproj/InfoPlist.strings` (both binary plists in `Alerts` helpers
-/// and UTF-8/UTF-16 `.strings` in main app locales) so macOS Notification Center and
-/// permission dialogs display `"LPBrower"` instead of `"ShardX"`.
 #[cfg(any(target_os = "macos", test))]
-fn patch_macos_infoplist_strings(resources_dir: &Path) {
+fn decode_macos_text(raw: &[u8]) -> Option<String> {
+    if raw.len() >= 2 && raw[0] == 0xFF && raw[1] == 0xFE {
+        let u16s: Vec<u16> = raw[2..]
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        return Some(String::from_utf16_lossy(&u16s));
+    }
+    if raw.len() >= 2 && raw[0] == 0xFE && raw[1] == 0xFF {
+        let u16s: Vec<u16> = raw[2..]
+            .chunks_exact(2)
+            .map(|c| u16::from_be_bytes([c[0], c[1]]))
+            .collect();
+        return Some(String::from_utf16_lossy(&u16s));
+    }
+    String::from_utf8(raw.to_vec()).ok()
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn replace_brand_text(s: &str) -> String {
+    s.replace("ShardBrowser", "LPBrowser")
+        .replace("ShardX", "LPBrowser")
+        .replace("LPBrower", "LPBrowser")
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn patch_text_brand_file(path: &Path) {
+    let Ok(raw) = fs::read(path) else {
+        return;
+    };
+    let Some(txt) = decode_macos_text(&raw) else {
+        return;
+    };
+    let updated = replace_brand_text(&txt);
+    if updated != txt {
+        let _ = fs::write(path, updated.as_bytes());
+    }
+}
+
+/// Patch localized `*.lproj/InfoPlist.strings` (both binary plists in `Alerts` helpers
+/// and UTF-8/UTF-16 `.strings` in main app locales) so macOS Dock, Menu Bar, Notification Center,
+/// and permission dialogs display `"LPBrowser"` instead of `"ShardX"`.
+/// When `ensure_bundle_names` is true (outer `.app` and Alerts helpers), guarantees both
+/// `"CFBundleDisplayName" = "LPBrowser";` and `"CFBundleName" = "LPBrowser";` are present so
+/// macOS `LSHasLocalizedDisplayName` never falls back to an unlocalized or cached name.
+#[cfg(any(target_os = "macos", test))]
+fn patch_macos_infoplist_strings(resources_dir: &Path, ensure_bundle_names: bool) {
     let Ok(entries) = fs::read_dir(resources_dir) else {
         return;
     };
@@ -628,36 +727,74 @@ fn patch_macos_infoplist_strings(resources_dir: &Path) {
             continue;
         };
         if raw.starts_with(b"bplist") {
-            let clean = "\"CFBundleDisplayName\" = \"LPBrower\";\n\"CFBundleName\" = \"LPBrower\";\n";
+            let clean = "\"CFBundleDisplayName\" = \"LPBrowser\";\n\"CFBundleName\" = \"LPBrowser\";\n";
             let _ = fs::write(&strings_file, clean.as_bytes());
-        } else if let Ok(txt) = String::from_utf8(raw.clone()) {
-            let updated = txt
-                .replace("ShardBrowser", "LPBrower")
-                .replace("ShardX", "LPBrower");
-            if updated != txt {
+        } else if let Some(txt) = decode_macos_text(&raw) {
+            let mut updated = replace_brand_text(&txt);
+            if ensure_bundle_names {
+                if !updated.contains("CFBundleDisplayName") {
+                    if !updated.is_empty() && !updated.ends_with('\n') {
+                        updated.push('\n');
+                    }
+                    updated.push_str("\"CFBundleDisplayName\" = \"LPBrowser\";\n");
+                }
+                if !updated.contains("CFBundleName") {
+                    if !updated.is_empty() && !updated.ends_with('\n') {
+                        updated.push('\n');
+                    }
+                    updated.push_str("\"CFBundleName\" = \"LPBrowser\";\n");
+                }
+            }
+            if updated != txt || raw.starts_with(&[0xFF, 0xFE]) || raw.starts_with(&[0xFE, 0xFF]) {
                 let _ = fs::write(&strings_file, updated.as_bytes());
             }
         }
     }
 }
 
-/// Update only human-facing display name keys in an Apple XML `Info.plist`,
-/// leaving `CFBundleExecutable` and `CFBundleIdentifier` untouched, and removing
-/// `CFBundleIconName` (`Assets.car`) so macOS uses `app.icns`.
 #[cfg(any(target_os = "macos", test))]
-fn patch_plist_display_names(plist_path: &Path, force_pure_brand_name: bool) -> std::io::Result<bool> {
+fn is_human_facing_plist_key(key: &str) -> bool {
+    matches!(
+        key,
+        "CFBundleDisplayName"
+            | "CFBundleName"
+            | "CFBundleGetInfoString"
+            | "NSHumanReadableCopyright"
+            | "CFBundleTypeName"
+            | "CFBundleURLName"
+            | "UTTypeDescription"
+    ) || key.ends_with("UsageDescription")
+        || key.ends_with("DisplayName")
+        || key.ends_with("Copyright")
+}
+
+/// Update human-facing display name / permission / document type strings in an Apple XML
+/// `Info.plist`, removing `CFBundleIconName` (`Assets.car`) so macOS uses `app.icns`.
+/// When `rename_executable` is true (outer `.app` bundle only, after renaming the binary),
+/// also updates `CFBundleExecutable` from `ShardX` to `LPBrowser`.
+#[cfg(any(target_os = "macos", test))]
+fn patch_plist_display_names(
+    plist_path: &Path,
+    force_pure_brand_name: bool,
+    rename_executable: bool,
+) -> std::io::Result<bool> {
     let raw = fs::read_to_string(plist_path)?;
     let mut cur = raw.clone();
-    for key in [
-        "CFBundleDisplayName",
-        "CFBundleName",
-        "CFBundleGetInfoString",
-        "NSHumanReadableCopyright",
-    ] {
-        let needle = format!("<key>{key}</key>");
-        let mut search_from = 0usize;
-        while let Some(rel_k) = cur[search_from..].find(&needle) {
-            let after_key = search_from + rel_k + needle.len();
+
+    let mut search_from = 0usize;
+    while let Some(rel_k) = cur[search_from..].find("<key>") {
+        let key_start = search_from + rel_k + "<key>".len();
+        let Some(rel_k_end) = cur[key_start..].find("</key>") else {
+            break;
+        };
+        let key_end = key_start + rel_k_end;
+        let key = cur[key_start..key_end].to_string();
+        let after_key = key_end + "</key>".len();
+
+        let should_patch = is_human_facing_plist_key(&key)
+            || (rename_executable && key == "CFBundleExecutable");
+
+        if should_patch {
             let rest = &cur[after_key..];
             let next_key = rest.find("<key>").unwrap_or(rest.len());
             let window = &rest[..next_key];
@@ -665,21 +802,37 @@ fn patch_plist_display_names(plist_path: &Path, force_pure_brand_name: bool) -> 
                 let val_start = after_key + s_open + "<string>".len();
                 let val_end = after_key + s_close;
                 if val_start <= val_end {
-                    let updated_val = if force_pure_brand_name && (key == "CFBundleDisplayName" || key == "CFBundleName") {
-                        "LPBrower".to_string()
+                    let old_val = &cur[val_start..val_end];
+                    let updated_val = if rename_executable && key == "CFBundleExecutable" && old_val == "ShardX" {
+                        "LPBrowser".to_string()
+                    } else if force_pure_brand_name && (key == "CFBundleDisplayName" || key == "CFBundleName") {
+                        "LPBrowser".to_string()
                     } else {
-                        cur[val_start..val_end]
-                            .replace("ShardBrowser", "LPBrower")
-                            .replace("ShardX", "LPBrower")
+                        replace_brand_text(old_val)
                     };
                     cur.replace_range(val_start..val_end, &updated_val);
                     search_from = val_start + updated_val.len();
                     continue;
                 }
             }
-            search_from = after_key;
+        }
+        search_from = after_key;
+    }
+
+    // Ensure outer app / Alerts helper plists explicitly carry CFBundleDisplayName & CFBundleName.
+    if force_pure_brand_name {
+        for req_key in ["CFBundleDisplayName", "CFBundleName"] {
+            let tag = format!("<key>{req_key}</key>");
+            if !cur.contains(&tag) {
+                if let Some(dict_pos) = cur.find("<dict>") {
+                    let insert_at = dict_pos + "<dict>".len();
+                    let snippet = format!("\n\t<key>{req_key}</key>\n\t<string>LPBrowser</string>");
+                    cur.insert_str(insert_at, &snippet);
+                }
+            }
         }
     }
+
     // Remove CFBundleIconName -> AppIcon so macOS uses our patched app.icns instead of Shard's Assets.car.
     let icon_key = "<key>CFBundleIconName</key>";
     if let Some(ik) = cur.find(icon_key) {
@@ -735,6 +888,10 @@ fn resign_macos_bundle(app_bundle: &Path) -> Result<(), String> {
             if fw_path.extension().and_then(|e| e.to_str()) != Some("framework") {
                 continue;
             }
+            let fw_stem = fw_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(str::to_string);
             let versions_dir = fw_path.join("Versions");
             if let Ok(ver_entries) = fs::read_dir(&versions_dir) {
                 for ver_ent in ver_entries.flatten() {
@@ -765,14 +922,36 @@ fn resign_macos_bundle(app_bundle: &Path) -> Result<(), String> {
                             }
                         }
                     }
+                    if let Some(stem) = &fw_stem {
+                        let fw_bin = ver_path.join(stem);
+                        if fw_bin.is_file() {
+                            let _ = sign_one(&fw_bin, false);
+                        }
+                    }
                 }
             }
             let _ = sign_one(&fw_path, false);
         }
     }
 
+    // Sign outer executable explicitly before signing the outer .app bundle.
+    let outer_exec = app_bundle.join("Contents").join("MacOS").join("LPBrowser");
+    if outer_exec.is_file() {
+        let _ = sign_one(&outer_exec, false);
+    }
+
     // Finally sign the outer .app bundle.
-    sign_one(app_bundle, true)
+    sign_one(app_bundle, true)?;
+
+    // Refresh LaunchServices database so macOS drops any stale cached ShardX icon/name.
+    let _ = Command::new(
+        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+    )
+    .args(["-f"])
+    .arg(app_bundle)
+    .output();
+
+    Ok(())
 }
 
 /// Migrate any existing profile's `Default/Preferences` that still has `chrome://shardx/`
@@ -917,12 +1096,13 @@ fn patch_locales(engine_dir: &Path) {
             continue;
         }
         let _ = patch_pak_v5(&p, |_rid, raw| {
-            if find_subslice(raw, b"Shard").is_none() {
+            if find_subslice(raw, b"Shard").is_none() && find_subslice(raw, b"LPBrower").is_none() {
                 return None;
             }
-            let r1 = replace_bytes_all(raw, b"ShardBrowser", b"LPBrower");
-            let r2 = replace_bytes_all(&r1, b"ShardX", b"LPBrower");
-            if r2 != raw { Some(r2) } else { None }
+            let r1 = replace_bytes_all(raw, b"ShardBrowser", b"LPBrowser");
+            let r2 = replace_bytes_all(&r1, b"ShardX", b"LPBrowser");
+            let r3 = replace_bytes_all(&r2, b"LPBrower", b"LPBrowser");
+            if r3 != raw { Some(r3) } else { None }
         });
     }
 }
@@ -1028,10 +1208,14 @@ fn patch_chrome_dll(dll_path: &Path) -> std::io::Result<()> {
     let mut data = fs::read(dll_path)?;
     let mut modified = false;
 
-    // 1. Start page HTML (exact byte length; matches fresh ShardBrowser or previously branded LPBrower)
-    let start_marker_shard = b"<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"color-scheme\" content=\"light dark\">\n<title>ShardBrowser</title>";
-    let start_marker_lp = b"<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"color-scheme\" content=\"light dark\">\n<title>LPBrower</title>";
-    if let Some(pos) = find_subslice(&data, start_marker_shard).or_else(|| find_subslice(&data, start_marker_lp)) {
+    // 1. Start page HTML (exact byte length; matches fresh ShardBrowser/ShardX or previously branded LPBrower/LPBrowser)
+    let start_markers: &[&[u8]] = &[
+        b"<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"color-scheme\" content=\"light dark\">\n<title>ShardBrowser</title>",
+        b"<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"color-scheme\" content=\"light dark\">\n<title>ShardX</title>",
+        b"<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"color-scheme\" content=\"light dark\">\n<title>LPBrower</title>",
+        b"<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"color-scheme\" content=\"light dark\">\n<title>LPBrowser</title>",
+    ];
+    if let Some(pos) = start_markers.iter().find_map(|m| find_subslice(&data, m)) {
         let end_marker = b"</html>";
         if let Some(rel_end) = find_subslice(&data[pos..], end_marker) {
             let end_pos = pos + rel_end + end_marker.len();
@@ -1063,14 +1247,17 @@ fn patch_chrome_dll(dll_path: &Path) -> std::io::Result<()> {
         }
     }
 
-    // 2. Startup URL: chrome://shardx/ -> chrome://newtab/ (exact 16 bytes)
-    if let Some(up) = find_subslice(&data, b"\0chrome://shardx/\0") {
+    // 2. Startup URL: chrome://shardx/ -> chrome://newtab/ (exact 16 bytes; patch all occurrences)
+    let mut url_from = 0usize;
+    while let Some(rel) = find_subslice(&data[url_from..], b"\0chrome://shardx/\0") {
+        let up = url_from + rel;
         data[up + 1..up + 17].copy_from_slice(b"chrome://newtab/");
         modified = true;
+        url_from = up + 17;
     }
 
     // 3. Window title prefix UTF-16 (`u"ShardX ("` -> `u"Window ("`, exact 8 UTF-16 chars)
-    //    so titles render: `Window (LPB|<Name>) — <Page> - LPBrower`.
+    //    so titles render: `Window (LPB|<Name>) — <Page> - LPBrowser`.
     //    Check anchored near `shardx-hide-profile-name` first (PE `.rdata`), then fallback
     //    to direct UTF-16LE match for Mach-O (`__TEXT,__ustring` pooled separately on macOS).
     let mut patched_win_prefix = false;
@@ -1091,10 +1278,12 @@ fn patch_chrome_dll(dll_path: &Path) -> std::io::Result<()> {
     if !patched_win_prefix {
         for old_s in ["ShardX (", "LP App ("] {
             let win_old = utf16le(old_s);
-            if let Some(wp) = find_subslice(&data, &win_old) {
+            let mut from = 0usize;
+            while let Some(rel) = find_subslice(&data[from..], &win_old) {
+                let wp = from + rel;
                 data[wp..wp + win_new.len()].copy_from_slice(&win_new);
                 modified = true;
-                break;
+                from = wp + win_new.len();
             }
         }
     }
@@ -1107,13 +1296,15 @@ fn patch_chrome_dll(dll_path: &Path) -> std::io::Result<()> {
         modified = true;
     }
 
-    // 5. Startup error UTF-16: "cannot start ShardX." -> "can't open LPBrower."
-    let err_old = utf16le("cannot start ShardX.");
-    let err_new = utf16le("can't open LPBrower.");
-    if err_old.len() == err_new.len() {
-        if let Some(ep) = find_subslice(&data, &err_old) {
-            data[ep..ep + err_new.len()].copy_from_slice(&err_new);
-            modified = true;
+    // 5. Startup error UTF-16: "cannot start ShardX." -> "can't run LPBrowser." (exact 20 UTF-16 chars)
+    let err_new = utf16le("can't run LPBrowser.");
+    for old_err in ["cannot start ShardX.", "can't open LPBrower."] {
+        let err_old = utf16le(old_err);
+        if err_old.len() == err_new.len() {
+            if let Some(ep) = find_subslice(&data, &err_old) {
+                data[ep..ep + err_new.len()].copy_from_slice(&err_new);
+                modified = true;
+            }
         }
     }
 
@@ -1309,7 +1500,7 @@ foreach ($base in $paths) {
   foreach ($vn in $item.GetValueNames()) {
     $val = [string]$item.GetValue($vn)
     if ($val -match 'ShardX|ShardBrowser|Wyocore') {
-      Set-ItemProperty -Path $base -Name $vn -Value 'LPBrower'
+      Set-ItemProperty -Path $base -Name $vn -Value 'LPBrowser'
     }
   }
   Get-ChildItem $base | ForEach-Object {
@@ -1317,7 +1508,7 @@ foreach ($base in $paths) {
     foreach ($vn in $sub.GetValueNames()) {
       $val = [string]$sub.GetValue($vn)
       if ($val -match 'ShardX|ShardBrowser|Shard') {
-        Set-ItemProperty -Path $sub.PSPath -Name $vn -Value 'LPBrower'
+        Set-ItemProperty -Path $sub.PSPath -Name $vn -Value 'LPBrowser'
       }
     }
   }
@@ -1454,9 +1645,9 @@ mod ver_info {
         if node.val_type == 1 && node.value.len() >= 2 {
             let new_str = match node.key.as_str() {
                 "ProductName" | "ProductShortName" | "FileDescription" | "CompanyName" | "CompanyShortName" => {
-                    Some("LPBrower".to_string())
+                    Some("LPBrowser".to_string())
                 }
-                "LegalCopyright" => Some("Copyright 2026 LPBrower. All rights reserved.".to_string()),
+                "LegalCopyright" => Some("Copyright 2026 LPBrowser. All rights reserved.".to_string()),
                 _ => {
                     let u16s: Vec<u16> = node
                         .value
@@ -1465,11 +1656,12 @@ mod ver_info {
                         .take_while(|&c| c != 0)
                         .collect();
                     let s = String::from_utf16_lossy(&u16s);
-                    if s.contains("Shard") || s.contains("Wyocore") {
+                    if s.contains("Shard") || s.contains("Wyocore") || s.contains("LPBrower") {
                         Some(
-                            s.replace("ShardBrowser", "LPBrower")
-                                .replace("ShardX", "LPBrower")
-                                .replace("Wyocore Tecnologiens LLC", "LPBrower"),
+                            s.replace("ShardBrowser", "LPBrowser")
+                                .replace("ShardX", "LPBrowser")
+                                .replace("LPBrower", "LPBrowser")
+                                .replace("Wyocore Tecnologiens LLC", "LPBrowser"),
                         )
                     } else {
                         None
@@ -1554,17 +1746,28 @@ mod tests {
     <string>ShardBrowser</string>
     <key>CFBundleIconName</key>
     <string>AppIcon</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Once ShardX has access, websites will be able to ask you for access.</string>
 </dict>
 </plist>"#;
         fs::write(contents.join("Info.plist"), plist).unwrap();
         fs::write(res_dir.join("app.icns"), b"old-icns").unwrap();
         fs::write(res_dir.join("Assets.car"), b"old-car").unwrap();
+        fs::write(res_dir.join("scripting.sdef"), "<suite name=\"ShardX Suite\"/>").unwrap();
+        let manifest_lproj = res_dir
+            .join("org.chromium.Chromium.manifest")
+            .join("Contents")
+            .join("Resources")
+            .join("en.lproj");
+        fs::create_dir_all(&manifest_lproj).unwrap();
+        fs::write(manifest_lproj.join("Localizable.strings"), "\"title\" = \"ShardX Policy\";\n").unwrap();
         fs::write(
             outer_vi_lproj.join("InfoPlist.strings"),
             "CFBundleGetInfoString = \"ShardX 158, Tác giả ShardX\";\n",
         )
         .unwrap();
         fs::write(macos_dir.join("ShardX"), b"stub").unwrap();
+        fs::write(fw_ver.join("Resources").join("product_logo_32.png"), b"old-logo").unwrap();
 
         let alerts_plist = r#"<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
@@ -1598,45 +1801,84 @@ mod tests {
         fake_fw.extend_from_slice(b"suffix");
         fs::write(fw_ver.join("ShardX Framework"), &fake_fw).unwrap();
 
-        // Calling with `bin.parent()` (`.../Contents/MacOS`) must locate `ShardX.app` and `engine_root`.
+        // Calling with `bin.parent()` (`.../Contents/MacOS`) must locate `ShardX.app`, rename to `LPBrowser.app`, and stamp `engine_root`.
         ensure_branded(&macos_dir);
 
-        let updated_plist = fs::read_to_string(contents.join("Info.plist")).unwrap();
-        assert!(updated_plist.contains("<key>CFBundleExecutable</key>\n    <string>ShardX</string>"));
-        assert!(updated_plist.contains("<key>CFBundleName</key>\n    <string>LPBrower</string>"));
-        assert!(updated_plist.contains("<key>CFBundleDisplayName</key>\n    <string>LPBrower</string>"));
+        let branded_app = engine_root.join("LPBrowser.app");
+        assert!(branded_app.is_dir(), "ShardX.app should be renamed to LPBrowser.app");
+        assert!(!app.exists(), "old ShardX.app should no longer exist");
+
+        let b_contents = branded_app.join("Contents");
+        let b_macos = b_contents.join("MacOS");
+        let b_res = b_contents.join("Resources");
+        let b_vi_lproj = b_res.join("vi.lproj");
+        let b_fw_ver = b_contents
+            .join("Frameworks")
+            .join("ShardX Framework.framework")
+            .join("Versions")
+            .join("157.0.8103.50");
+        let b_fw_lproj = b_fw_ver.join("Resources").join("en.lproj");
+        let b_alerts_app = b_fw_ver.join("Helpers").join("ShardX Helper (Alerts).app");
+        let b_alerts_res = b_alerts_app.join("Contents").join("Resources");
+        let b_alerts_base_lproj = b_alerts_res.join("base.lproj");
+
+        assert!(b_macos.join("LPBrowser").is_file(), "outer binary should be renamed to LPBrowser");
+        assert!(!b_macos.join("ShardX").exists());
+
+        let updated_plist = fs::read_to_string(b_contents.join("Info.plist")).unwrap();
+        assert!(updated_plist.contains("<key>CFBundleExecutable</key>\n    <string>LPBrowser</string>"));
+        assert!(updated_plist.contains("<key>CFBundleName</key>\n    <string>LPBrowser</string>"));
+        assert!(updated_plist.contains("<key>CFBundleDisplayName</key>\n    <string>LPBrowser</string>"));
+        assert!(updated_plist.contains("Once LPBrowser has access"));
+        assert!(!updated_plist.contains("Shard"), "{updated_plist}");
         assert!(!updated_plist.contains("CFBundleIconName"));
-        assert!(!res_dir.join("Assets.car").exists());
+        assert!(!b_res.join("Assets.car").exists());
 
-        let vi_strings = fs::read_to_string(outer_vi_lproj.join("InfoPlist.strings")).unwrap();
+        let sdef = fs::read_to_string(b_res.join("scripting.sdef")).unwrap();
+        assert!(sdef.contains("LPBrowser Suite") && !sdef.contains("Shard"));
+        let policy_str = fs::read_to_string(
+            b_res
+                .join("org.chromium.Chromium.manifest")
+                .join("Contents")
+                .join("Resources")
+                .join("en.lproj")
+                .join("Localizable.strings"),
+        )
+        .unwrap();
+        assert!(policy_str.contains("LPBrowser Policy") && !policy_str.contains("Shard"));
+
+        let vi_strings = fs::read_to_string(b_vi_lproj.join("InfoPlist.strings")).unwrap();
         assert!(!vi_strings.contains("Shard"), "{vi_strings}");
-        assert!(vi_strings.contains("LPBrower"));
+        assert!(vi_strings.contains("LPBrowser"));
+        assert!(vi_strings.contains("\"CFBundleDisplayName\" = \"LPBrowser\";"), "{vi_strings}");
+        assert!(vi_strings.contains("\"CFBundleName\" = \"LPBrowser\";"), "{vi_strings}");
 
-        let updated_alerts_plist = fs::read_to_string(alerts_app.join("Contents").join("Info.plist")).unwrap();
-        assert!(updated_alerts_plist.contains("<key>CFBundleDisplayName</key>\n    <string>LPBrower</string>"));
+        let updated_alerts_plist = fs::read_to_string(b_alerts_app.join("Contents").join("Info.plist")).unwrap();
+        assert!(updated_alerts_plist.contains("<key>CFBundleDisplayName</key>\n    <string>LPBrowser</string>"));
         assert!(updated_alerts_plist.contains("<key>CFBundleExecutable</key>\n    <string>ShardX Helper (Alerts)</string>"));
         assert!(!updated_alerts_plist.contains("CFBundleIconName"));
-        assert!(!alerts_res.join("Assets.car").exists());
-        assert_eq!(&fs::read(alerts_res.join("app.icns")).unwrap()[..4], b"icns");
-        let alerts_strings = fs::read_to_string(alerts_base_lproj.join("InfoPlist.strings")).unwrap();
-        assert!(alerts_strings.contains("\"CFBundleDisplayName\" = \"LPBrower\""));
+        assert!(!b_alerts_res.join("Assets.car").exists());
+        assert_eq!(&fs::read(b_alerts_res.join("app.icns")).unwrap()[..4], b"icns");
+        let alerts_strings = fs::read_to_string(b_alerts_base_lproj.join("InfoPlist.strings")).unwrap();
+        assert!(alerts_strings.contains("\"CFBundleDisplayName\" = \"LPBrowser\""));
         assert!(!alerts_strings.contains("Shard"));
 
-        let updated_icns = fs::read(res_dir.join("app.icns")).unwrap();
+        let updated_icns = fs::read(b_res.join("app.icns")).unwrap();
         assert_eq!(&updated_icns[..4], b"icns");
         assert_eq!(updated_icns.len(), ICNS_BYTES.len());
+        assert_eq!(fs::read(b_fw_ver.join("Resources").join("product_logo_32.png")).unwrap(), LP_PNG_32);
 
-        let updated_pak = fs::read(fw_lproj.join("locale.pak")).unwrap();
-        assert!(find_subslice(&updated_pak, b"About LPBrower and LPBrower").is_some());
+        let updated_pak = fs::read(b_fw_lproj.join("locale.pak")).unwrap();
+        assert!(find_subslice(&updated_pak, b"About LPBrowser and LPBrowser").is_some());
         assert!(find_subslice(&updated_pak, b"Shard").is_none());
 
-        let updated_res_pak = fs::read(fw_ver.join("Resources").join("resources.pak")).unwrap();
+        let updated_res_pak = fs::read(b_fw_ver.join("Resources").join("resources.pak")).unwrap();
         assert!(updated_res_pak.len() > res_pak.len());
         assert!(START_PAGE_HTML.len() <= 11000, "START_PAGE_HTML too long: {}", START_PAGE_HTML.len());
         assert!(!ntp_template::build_ntp_html("new_tab_page.js", "M").contains('$'));
         assert!(!ntp_template::build_ntp_js("M").contains('$'));
 
-        let updated_fw = fs::read(fw_ver.join("ShardX Framework")).unwrap();
+        let updated_fw = fs::read(b_fw_ver.join("ShardX Framework")).unwrap();
         assert!(find_subslice(&updated_fw, b"\0chrome://newtab/\0").is_some());
         assert!(find_subslice(&updated_fw, &utf16le("Window (")).is_some());
 
@@ -1686,8 +1928,8 @@ mod tests {
             let u16s: Vec<u16> = n.value.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).take_while(|&c| c != 0).collect();
             String::from_utf16_lossy(&u16s)
         };
-        assert_eq!(val_of(&props[0]), "LPBrower");
-        assert_eq!(val_of(&props[1]), "LPBrower");
+        assert_eq!(val_of(&props[0]), "LPBrowser");
+        assert_eq!(val_of(&props[1]), "LPBrowser");
     }
 
     #[cfg(windows)]
@@ -1713,7 +1955,7 @@ mod tests {
             find_subslice(&data, &shardx_u16).is_none(),
             "patched chrome_elf.dll still contains UTF-16 ShardX"
         );
-        assert!(find_subslice(&data, &utf16le("LPBrower")).is_some());
+        assert!(find_subslice(&data, &utf16le("LPBrowser")).is_some());
 
         // Best-effort upgrade of the local runtime when no browser process locks it.
         ensure_branded(&rt_dir);

@@ -127,7 +127,7 @@ jobs:
           ln -s /Applications "$STAGE_DMG/Applications"
           hdiutil create \
             -size 250m \
-            -volname "LPBrower Launcher" \
+            -volname "LPBrowser" \
             -srcfolder "$STAGE_DMG" \
             -ov \
             -format UDZO \
