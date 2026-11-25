@@ -2951,7 +2951,7 @@ mod win_taskbar_icon {
             if SHGetPropertyStoreForWindow(raw_hwnd, &IID_IPROPERTYSTORE, &mut store) == 0
                 && !store.is_null()
             {
-                let mut set_wstr = |pid: u32, val: &str| {
+                let set_wstr = |pid: u32, val: &str| {
                     if val.is_empty() {
                         return;
                     }
@@ -2977,6 +2977,204 @@ mod win_taskbar_icon {
                 let _ = ((*(*store).vtbl).commit)(store);
                 let _ = ((*(*store).vtbl).release)(store);
             }
+        }
+    }
+}
+
+/// Persist and restore the main Launcher window's size, position, and maximized state
+/// across sessions (`window-state.json` inside `store::local_root()`).
+mod window_state {
+    use serde::{Deserialize, Serialize};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+
+    const MIN_W: u32 = 1024;
+    const MIN_H: u32 = 680;
+    const THROTTLE: Duration = Duration::from_millis(400);
+
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+    pub struct SavedWindowState {
+        pub width: u32,
+        pub height: u32,
+        #[serde(default)]
+        pub x: Option<i32>,
+        #[serde(default)]
+        pub y: Option<i32>,
+        #[serde(default)]
+        pub maximized: bool,
+    }
+
+    static LAST_STATE: Mutex<Option<SavedWindowState>> = Mutex::new(None);
+    static LAST_WRITE: Mutex<Option<Instant>> = Mutex::new(None);
+    static PENDING_MAXIMIZE: AtomicBool = AtomicBool::new(false);
+
+    fn state_path() -> Option<PathBuf> {
+        crate::store::local_root().ok().map(|d| d.join("window-state.json"))
+    }
+
+    fn load_from_disk() -> Option<SavedWindowState> {
+        let p = state_path()?;
+        let raw = std::fs::read_to_string(p).ok()?;
+        let st: SavedWindowState = serde_json::from_str(&raw).ok()?;
+        if st.width < MIN_W || st.height < MIN_H {
+            return None;
+        }
+        Some(st)
+    }
+
+    fn write_to_disk(st: &SavedWindowState) {
+        let Some(p) = state_path() else { return };
+        let Ok(json) = serde_json::to_string_pretty(st) else { return };
+        let tmp = p.with_extension("json.tmp");
+        if std::fs::write(&tmp, json).is_ok() {
+            let _ = std::fs::rename(&tmp, &p);
+        }
+    }
+
+    pub fn position_visible_on_monitors(
+        x: i32,
+        y: i32,
+        w: u32,
+        h: u32,
+        monitors: &[(i32, i32, u32, u32)],
+    ) -> bool {
+        if monitors.is_empty() {
+            return false;
+        }
+        let margin = 100i32;
+        let rx = x.saturating_add(w as i32);
+        let by = y.saturating_add(h as i32);
+        monitors.iter().any(|&(mx, my, mw, mh)| {
+            let mrx = mx.saturating_add(mw as i32);
+            let mby = my.saturating_add(mh as i32);
+            rx >= mx + margin && x <= mrx - margin && by >= my + margin && y <= mby - margin
+        })
+    }
+
+    /// Restore the saved window geometry before the main window becomes visible.
+    pub fn restore(w: &tauri::WebviewWindow) {
+        let Some(st) = load_from_disk() else { return };
+        let monitors: Vec<(i32, i32, u32, u32)> = w
+            .available_monitors()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|m| {
+                let pos = m.position();
+                let sz = m.size();
+                (pos.x, pos.y, sz.width, sz.height)
+            })
+            .collect();
+
+        let width = st.width.max(MIN_W);
+        let height = st.height.max(MIN_H);
+        let _ = w.set_size(tauri::Size::Physical(tauri::PhysicalSize { width, height }));
+
+        if let (Some(x), Some(y)) = (st.x, st.y) {
+            if position_visible_on_monitors(x, y, width, height, &monitors) {
+                let _ = w.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
+            }
+        }
+
+        if st.maximized {
+            // Defer maximize until the window is revealed so Win32 SW_MAXIMIZE does not unhide early.
+            PENDING_MAXIMIZE.store(true, Ordering::Relaxed);
+        }
+        if let Ok(mut guard) = LAST_STATE.lock() {
+            *guard = Some(SavedWindowState { width, height, x: st.x, y: st.y, maximized: st.maximized });
+        }
+    }
+
+    /// Apply deferred maximize once the window becomes visible / focused.
+    pub fn apply_pending_maximize(w: &tauri::Window) {
+        if PENDING_MAXIMIZE.swap(false, Ordering::Relaxed) {
+            let _ = w.maximize();
+        }
+    }
+
+    /// Record the main window's current size/position/maximized state.
+    /// Ignores hidden or minimized states so startup defaults and Win32 -32000 coords never clobber saved state.
+    pub fn capture_window(w: &tauri::Window, flush_now: bool) {
+        if !w.is_visible().unwrap_or(false) || w.is_minimized().unwrap_or(false) {
+            return;
+        }
+        let is_max = w.is_maximized().unwrap_or(false);
+        let mut next = LAST_STATE
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
+            .unwrap_or(SavedWindowState {
+                width: 1280,
+                height: 800,
+                x: None,
+                y: None,
+                maximized: false,
+            });
+        next.maximized = is_max;
+
+        if !is_max {
+            if let Ok(sz) = w.inner_size() {
+                if sz.width >= MIN_W && sz.height >= MIN_H {
+                    next.width = sz.width;
+                    next.height = sz.height;
+                }
+            }
+            if let Ok(pos) = w.outer_position() {
+                // Guard against Win32 minimized sentinel (-32000).
+                if pos.x > -10_000 && pos.y > -10_000 {
+                    next.x = Some(pos.x);
+                    next.y = Some(pos.y);
+                }
+            }
+        }
+
+        let changed = match LAST_STATE.lock() {
+            Ok(mut guard) => {
+                let diff = guard.as_ref() != Some(&next);
+                *guard = Some(next.clone());
+                diff
+            }
+            Err(_) => true,
+        };
+
+        if !flush_now {
+            if !changed {
+                return;
+            }
+            if let Ok(mut lw) = LAST_WRITE.lock() {
+                let now = Instant::now();
+                if lw.is_some_and(|prev| now.duration_since(prev) < THROTTLE) {
+                    return;
+                }
+                *lw = Some(now);
+            }
+        } else if let Ok(mut lw) = LAST_WRITE.lock() {
+            *lw = Some(Instant::now());
+        }
+
+        write_to_disk(&next);
+    }
+
+    /// Flush the latest captured state synchronously (e.g. on `quit`).
+    pub fn flush_now() {
+        if let Ok(guard) = LAST_STATE.lock() {
+            if let Some(st) = guard.as_ref() {
+                write_to_disk(st);
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn monitor_visibility_accepts_onscreen_and_rejects_disconnected_monitor() {
+            let monitors = [(0, 0, 1920, 1080)];
+            assert!(position_visible_on_monitors(100, 80, 1360, 840, &monitors));
+            assert!(!position_visible_on_monitors(2500, 100, 1280, 800, &monitors));
+            assert!(!position_visible_on_monitors(-32000, -32000, 1280, 800, &monitors));
         }
     }
 }
@@ -3062,15 +3260,30 @@ pub fn run() {
             }
         })
         .on_window_event(|window, event| {
-            #[cfg(windows)]
             if window.label() == "main" {
-                if let tauri::WindowEvent::Focused(true) = event {
-                    static ONCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-                    if !ONCE.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                        if let Ok(hwnd) = window.hwnd() {
-                            win_taskbar_icon::apply_to_hwnd(hwnd.0 as isize);
+                match event {
+                    tauri::WindowEvent::Focused(true) => {
+                        window_state::apply_pending_maximize(window);
+                        #[cfg(windows)]
+                        {
+                            static ONCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                            if !ONCE.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                                if let Ok(hwnd) = window.hwnd() {
+                                    win_taskbar_icon::apply_to_hwnd(hwnd.0 as isize);
+                                }
+                            }
                         }
                     }
+                    tauri::WindowEvent::Focused(false) => {
+                        window_state::capture_window(window, true);
+                    }
+                    tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Moved(_) => {
+                        window_state::capture_window(window, false);
+                    }
+                    tauri::WindowEvent::CloseRequested { .. } => {
+                        window_state::capture_window(window, true);
+                    }
+                    _ => {}
                 }
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -3343,22 +3556,25 @@ pub fn run() {
                 }
             }
 
-            // Win/Linux: strip native caption and explicitly push WM_SETICON onto the main window.
-            #[cfg(not(target_os = "macos"))]
+            // Restore the previous session's Launcher window size/position across all OSes.
             {
                 use tauri::Manager;
                 if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.set_decorations(false);
-                    if let Some(ref ic) = brand_window_icon {
-                        let _ = w.set_icon(ic.clone());
-                    }
-                    #[cfg(windows)]
+                    #[cfg(not(target_os = "macos"))]
                     {
-                        win_taskbar_icon::init_process_and_registry();
-                        if let Ok(hwnd) = w.hwnd() {
-                            win_taskbar_icon::apply_to_hwnd(hwnd.0 as isize);
+                        let _ = w.set_decorations(false);
+                        if let Some(ref ic) = brand_window_icon {
+                            let _ = w.set_icon(ic.clone());
+                        }
+                        #[cfg(windows)]
+                        {
+                            win_taskbar_icon::init_process_and_registry();
+                            if let Ok(hwnd) = w.hwnd() {
+                                win_taskbar_icon::apply_to_hwnd(hwnd.0 as isize);
+                            }
                         }
                     }
+                    window_state::restore(&w);
                 }
             }
 
@@ -3537,6 +3753,7 @@ fn exit_app(app: &tauri::AppHandle, code: i32) {
 fn quit(app: &tauri::AppHandle) {
     use std::sync::atomic::Ordering::SeqCst;
     use tauri::{Emitter, Manager};
+    window_state::flush_now();
     if reset::active() {
         notify_warning(reset::WAIT);
         return;

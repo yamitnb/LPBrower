@@ -28,7 +28,7 @@ export function FingerprintTab({ draft }: { draft: ProfileFormDraft }) {
       <section className="flex flex-col gap-3 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-3.5">
         <div className="flex items-center justify-between pb-2 border-b border-stroke-soft-200/70">
           <div className="flex items-center gap-2">
-            <ComputerIcon className="size-[22px]" />
+            <ComputerIcon className="size-[19px] text-primary-base" />
             <h3 className="m-0 text-xs font-semibold text-text-strong-950">
               {t("profileForm.groupHardware") || "Phần cứng & Màn hình"}
             </h3>
@@ -57,13 +57,13 @@ export function FingerprintTab({ draft }: { draft: ProfileFormDraft }) {
       <section className="flex flex-col gap-3 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-3.5">
         <div className="flex items-center justify-between pb-2 border-b border-stroke-soft-200/70">
           <div className="flex items-center gap-2">
-            <NavFingerprintsIcon className="size-[22px]" />
+            <NavFingerprintsIcon className="size-[19px] text-primary-base" />
             <h3 className="m-0 text-xs font-semibold text-text-strong-950">
               {t("profileForm.groupLocale") || "Định vị, Nhiễu (Noise) & WebRTC"}
             </h3>
           </div>
           <span className="inline-flex items-center gap-1.5 text-[11px] text-text-soft-400">
-            <GhostModeIcon className="size-5" />
+            <GhostModeIcon className="size-[17px]" />
             Fingerprint Protection
           </span>
         </div>

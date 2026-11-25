@@ -48,7 +48,7 @@ export function EngineUpdateBanner() {
     <div
       data-engine-update={error.stage}
       // On Windows and Linux the caption buttons sit over this row (#142): their room, as PageHeader keeps.
-      className={cn("mx-gutter mt-2.5 flex shrink-0 items-center gap-2 rounded-control bg-warning-tint px-3 py-1 text-secondary text-text-strong-950 forced-edge", HAS_CAPTIONS && "me-[150px]")}
+      className={cn("mx-gutter mt-2.5 flex shrink-0 items-center gap-2 rounded-control bg-warning-tint px-3 py-1 text-secondary text-text-strong-950 forced-edge", HAS_CAPTIONS && "me-[114px]")}
     >
       <div className="flex min-w-0 flex-1 items-start gap-2 py-1">
         <AlertCircleIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning-text" />

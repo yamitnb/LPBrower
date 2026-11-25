@@ -267,7 +267,7 @@ export default function Menu({ open, onOpenChange, anchor, items, side = 'bottom
         {plain?.icon && (
           <span
             className={cn(
-              'flex size-5 [&>svg]:size-[17px] [&>img]:size-5 shrink-0 items-center justify-center',
+              'flex size-[18px] [&>svg]:size-[17px] shrink-0 items-center justify-center',
               item.disabled || plain.danger ? 'text-current' : 'text-icon-sub-600',
             )}
           >

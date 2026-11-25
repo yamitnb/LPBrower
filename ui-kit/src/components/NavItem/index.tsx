@@ -63,7 +63,7 @@ const NavItem = forwardRef<HTMLButtonElement, NavItemProps>(function NavItem(
       )}
       {...rest}
     >
-      <span className={cn('flex size-[22px] [&>svg]:size-[18px] [&>img]:size-[22px] shrink-0 items-center justify-center', dropActive ? 'text-primary-text' : active ? 'text-icon-strong-950' : 'text-icon-soft-400')}>
+      <span className={cn('flex size-[20px] [&>svg]:size-[18px] shrink-0 items-center justify-center', dropActive ? 'text-primary-text' : active ? 'text-icon-strong-950' : 'text-icon-soft-400')}>
         {icon}
       </span>
       {!collapsed && <span className="min-w-0 flex-1 truncate">{label}</span>}

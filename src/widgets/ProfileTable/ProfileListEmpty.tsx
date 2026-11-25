@@ -62,7 +62,7 @@ export function ProfileListEmpty() {
   if (team && unread) {
     return (
       <EmptyState
-        icon={<span className="brand-mark grid"><ShardLogo size={40} /></span>}
+        icon={<span className="brand-mark grid text-primary-base"><ShardLogo size={30} /></span>}
         title={t("profileTable.teamUnreadTitle")}
         hint={t("profileTable.teamUnreadHint")}
       />
@@ -83,7 +83,7 @@ export function ProfileListEmpty() {
   if (member) {
     return (
       <EmptyState
-        icon={<span className="brand-mark grid"><ShardLogo size={40} /></span>}
+        icon={<span className="brand-mark grid text-primary-base"><ShardLogo size={30} /></span>}
         title={t("profileTable.teamEmptyTitle")}
         hint={t("profileTable.teamEmptyHint")}
         actions={<><NewProfileButton /><ImportProfilesButton /></>}
@@ -92,8 +92,8 @@ export function ProfileListEmpty() {
   }
   return (
     <EmptyState
-      // The brand mark is 40 px in the empty state.
-      icon={<span className="brand-mark grid"><ShardLogo size={40} /></span>}
+      // The brand mark is 30 px in the empty state.
+      icon={<span className="brand-mark grid text-primary-base"><ShardLogo size={30} /></span>}
       title={t("profileTable.emptyTitle")}
       hint={t("profileTable.emptyHint")}
       // The page's main action is the filled primary button, first, as on every

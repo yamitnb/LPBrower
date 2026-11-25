@@ -157,7 +157,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
       {...rest}
     >
       {iconSlot != null && (
-        <span className="flex size-4 [&>svg]:size-4 [&>img]:size-[18px] shrink-0 items-center justify-center">{isLoading ? spinner : iconSlot}</span>
+        <span className="flex size-[17px] [&>svg:not([data-caption-glyph])]:size-[17px] shrink-0 items-center justify-center">{isLoading ? spinner : iconSlot}</span>
       )}
       {!onlyIcon && children != null && (
         <span className={cn(mode !== 'link' && 'px-[3px]', contentAlign === 'start' && 'min-w-0 flex-1 truncate', isLoading && leftIcon == null && 'invisible')}>
@@ -165,7 +165,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
         </span>
       )}
       {rightIcon && (
-        <span className={cn('flex size-4 [&>svg]:size-4 [&>img]:size-[18px] shrink-0 items-center justify-center', isLoading && leftIcon == null && 'invisible')}>{rightIcon}</span>
+        <span className={cn('flex size-[17px] [&>svg:not([data-caption-glyph])]:size-[17px] shrink-0 items-center justify-center', isLoading && leftIcon == null && 'invisible')}>{rightIcon}</span>
       )}
       {isLoading && leftIcon == null && !onlyIcon && (
         <span className="absolute inset-0 flex items-center justify-center">{spinner}</span>

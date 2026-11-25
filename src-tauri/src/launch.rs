@@ -161,6 +161,45 @@ impl Drop for Starting {
     }
 }
 
+/// Returns true when Chromium's `Default/Preferences` already recorded a valid
+/// `browser.window_placement` rect from a previous session so we should let
+/// Chromium restore the user's last window size, position, and maximized state.
+fn has_saved_window_placement(udd: &Path) -> bool {
+    let prefs_path = udd.join("Default").join("Preferences");
+    let Ok(raw) = std::fs::read_to_string(&prefs_path) else {
+        return false;
+    };
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return false;
+    };
+    let Some(wp) = val.pointer("/browser/window_placement").and_then(|v| v.as_object()) else {
+        return false;
+    };
+    let left = wp.get("left").and_then(|v| v.as_i64()).unwrap_or(0);
+    let right = wp.get("right").and_then(|v| v.as_i64()).unwrap_or(0);
+    let top = wp.get("top").and_then(|v| v.as_i64()).unwrap_or(0);
+    let bottom = wp.get("bottom").and_then(|v| v.as_i64()).unwrap_or(0);
+    (right - left) >= 200 && (bottom - top) >= 150
+}
+
+/// Remove static window size dimensions from the runtime `fingerprint.json` payload
+/// so the browser engine does not pass `--window-size=...` and override Chromium's
+/// saved `browser.window_placement` from the previous session.
+fn strip_window_size_for_restore(raw: &mut serde_json::Map<String, serde_json::Value>) {
+    let remove_whole = match raw.get_mut("window").and_then(|v| v.as_object_mut()) {
+        Some(win) => {
+            for k in ["outer_width", "outer_height", "inner_width", "inner_height"] {
+                win.remove(k);
+            }
+            win.is_empty()
+        }
+        None => false,
+    };
+    if remove_whole {
+        raw.remove("window");
+    }
+}
+
 /// Give a profile a `window` block when it claims a screen but names no window.
 ///
 /// The engine turns `window.outer_*` into `--window-size`; with nothing to turn,
@@ -798,6 +837,12 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
         if let Some(w) = crate::main_window() {
             crate::clamp_screen_to_real_display(&w, &mut raw);
         }
+    }
+    // If this profile has already been opened before and Chromium recorded the user's
+    // previous window size/position in `Default/Preferences`, omit static `window.outer_*`
+    // from the transient `fingerprint.json` so Chromium restores the previous session's size.
+    if !opts.headless && has_saved_window_placement(&input.udd) {
+        strip_window_size_for_restore(&mut raw);
     }
     let json = serde_json::to_string(&raw).context("serialize profile")?;
 
@@ -2208,5 +2253,53 @@ mod tests {
         let back: crate::space::profile::StoredProfile =
             serde_json::from_str(&serde_json::to_string(&stored).unwrap()).unwrap();
         assert_eq!(back.config.get("ui_language"), Some(&json!("profile")));
+    }
+
+    #[test]
+    fn browser_window_placement_restores_previous_session_size() {
+        let tmp = std::env::temp_dir().join(format!("lpb-wp-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("Default")).unwrap();
+
+        // Fresh profile with no Default/Preferences -> false
+        assert!(!super::has_saved_window_placement(&tmp));
+
+        // Preferences with valid window_placement -> true
+        let prefs = json!({
+            "browser": {
+                "window_placement": {
+                    "left": 80, "top": 60, "right": 1220, "bottom": 810, "maximized": false
+                }
+            }
+        });
+        std::fs::write(tmp.join("Default/Preferences"), prefs.to_string()).unwrap();
+        assert!(super::has_saved_window_placement(&tmp));
+
+        // Stripping window dimensions leaves non-size keys intact and removes empty window blocks
+        let mut raw = json!({
+            "window": {
+                "outer_width": 1920,
+                "outer_height": 1031,
+                "inner_width": 1920,
+                "inner_height": 944,
+                "keep_focus": true
+            }
+        })
+        .as_object()
+        .unwrap()
+        .clone();
+        super::strip_window_size_for_restore(&mut raw);
+        assert_eq!(raw["window"], json!({ "keep_focus": true }));
+
+        let mut raw_only_size = json!({
+            "window": { "outer_width": 1920, "outer_height": 1031 }
+        })
+        .as_object()
+        .unwrap()
+        .clone();
+        super::strip_window_size_for_restore(&mut raw_only_size);
+        assert!(!raw_only_size.contains_key("window"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

@@ -28,7 +28,7 @@ export function TeamStatusBanner() {
         "mx-gutter mt-2.5 flex shrink-0 items-start gap-2 rounded-control px-3 py-2 text-secondary text-text-strong-950 forced-edge",
         offline ? "bg-warning-tint" : "bg-error-tint",
         // The caption buttons' room on Windows and Linux (#142), as PageHeader keeps.
-        HAS_CAPTIONS && "me-[150px]",
+        HAS_CAPTIONS && "me-[114px]",
       )}
     >
       <Icon aria-hidden="true" className={cn("mt-0.5 size-3.5 shrink-0", offline ? "text-warning-text" : "text-error-text")} />

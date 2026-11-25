@@ -32,7 +32,7 @@ export default function EmptyState({ icon, title, hint, actions, action, seconda
     <div data-empty-state className={cn('flex flex-col items-center gap-[8px] px-[21px] py-[49px] text-center', className)}>
       {icon && (
         // COLOR-10: an icon tile is not an action, so it is neutral. No ring (owner feedback 5o).
-        <div className={cn('grid size-16 place-items-center rounded-surface [&>svg]:size-7 [&>img]:size-10', tone === 'brand' ? 'bg-primary-tint text-primary-text' : 'bg-bg-weak-50 text-icon-sub-600')}>
+        <div className={cn('grid size-14 place-items-center rounded-surface [&>svg]:size-7', tone === 'brand' ? 'bg-primary-tint text-primary-text' : 'bg-bg-weak-50 text-icon-sub-600')}>
           {icon}
         </div>
       )}

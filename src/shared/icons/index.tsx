@@ -1,9 +1,8 @@
 /**
  * App icon set: Hugeicons free tier (stroke), wrapped so views import
  * semantic names from one place — same pattern as the dashboard. Size via
- * className (size-3.5: every UI icon is 14 px, owner 2026-09-28) or the
- * `size` prop; colour follows currentColor.
- * Brand marks (Shard, GitHub) stay hand-drawn.
+ * className or the `size` prop; colour follows currentColor.
+ * Brand marks (Shard, GitHub) stay hand-drawn vector SVGs.
  */
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ICON_STROKE, cn } from "@proxyshard/shardx-ui-kit";
@@ -11,7 +10,10 @@ import {
   ArrowLeft01Icon,
   UserIcon,
   BookmarkAdd01Icon,
+  BrowserIcon,
+  Route01Icon,
   ShoppingCart01Icon,
+  FingerPrintIcon,
   Settings01Icon,
   Copy01Icon,
   BookOpen01Icon,
@@ -46,11 +48,15 @@ import {
   PauseIcon as HugePauseIcon,
   SparklesIcon,
   StarIcon,
+  LockIcon,
+  SquareLock02Icon,
   SquareUnlock02Icon,
   ResetPasswordIcon,
+  PuzzleIcon,
   Bookmark02Icon,
   Delete03Icon,
   ArchiveRestoreIcon,
+  ComputerIcon as HugeComputerIcon,
   CheckmarkCircle02Icon,
   Alert02Icon,
   AlertCircleIcon as HugeAlertCircleIcon,
@@ -100,17 +106,15 @@ import type { ComponentProps } from "react";
 type HugeiconsIconProps = ComponentProps<typeof HugeiconsIcon>;
 type IconProps = Omit<HugeiconsIconProps, "icon">;
 
+const hasExplicitSize = (cls?: string) => !!cls && /\b(size-|w-|h-)/.test(cls);
+
 // `name`, when given, binds a stable `data-icon` on the rendered svg once,
 // inside the component — not re-typed (and so re-typeable wrong, or onto
-// the wrong glyph) at every call site. Fix round 1, finding 8: a test that
-// only reads a hand-typed `data-icon` prop passes on any icon, since the
-// attribute isn't actually bound to the glyph it names.
+// the wrong glyph) at every call site.
 //
 // Decorative unless told otherwise: the control around it carries the name
 // (A11Y-21). A meaningful icon passes `role="img"` and an `aria-label` (or
 // `aria-hidden={false}`).
-const hasExplicitSize = (cls?: string) => !!cls && /\b(size-|w-|h-)/.test(cls);
-
 const make = (icon: HugeiconsIconProps["icon"], name?: string) =>
   function AppIcon({ className, ...props }: IconProps) {
     return (
@@ -120,49 +124,22 @@ const make = (icon: HugeiconsIconProps["icon"], name?: string) =>
         data-icon={name}
         aria-hidden={props.role ? undefined : "true"}
         focusable="false"
-        className={cn(!hasExplicitSize(className) && "size-[17px]", className)}
+        className={cn(!props.size && !hasExplicitSize(className) && "size-[18px]", className)}
         {...props}
       />
     );
   };
 
-const makeBrand = (src: string, name?: string) =>
-  function BrandIcon({ className, size, role, style, ...rest }: IconProps) {
-    const px =
-      typeof size === "number"
-        ? size
-        : typeof size === "string"
-          ? Number(size) || undefined
-          : undefined;
-    return (
-      <img
-        src={src}
-        alt=""
-        draggable={false}
-        data-icon={name}
-        aria-hidden={role ? undefined : "true"}
-        role={role}
-        style={px ? { width: px, height: px, ...style } : style}
-        className={cn(
-          !px && !hasExplicitSize(className) && "size-[22px]",
-          "shrink-0 object-contain select-none",
-          className,
-        )}
-        {...(rest as Record<string, unknown>)}
-      />
-    );
-  };
-
-/* ── Navigation / section icons (LPBrowser Brand Showcase Suite) ── */
-export const NavBrowsersIcon = makeBrand("/brand-icons/multi-profiles.png", "multi-profiles");
-export const NavProxiesIcon = makeBrand("/brand-icons/proxy-ip.png", "proxy-ip");
+/* ── Navigation / section icons ── */
+export const NavBrowsersIcon = make(BrowserIcon);
+export const NavProxiesIcon = make(Route01Icon);
 export const NavShopIcon = make(ShoppingCart01Icon);
-export const NavFingerprintsIcon = makeBrand("/brand-icons/anti-fingerprint.png", "anti-fingerprint");
+export const NavFingerprintsIcon = make(FingerPrintIcon);
 export const NavSettingsIcon = make(Settings01Icon);
 export const DocsIcon = make(BookOpen01Icon);
 export const NavPatchLogIcon = make(SparklesIcon);
-export const NavExtensionsIcon = makeBrand("/brand-icons/cookie-manager.png", "cookie-manager");
-export const GhostModeIcon = makeBrand("/brand-icons/ghost-mode.png", "ghost-mode");
+export const NavExtensionsIcon = make(PuzzleIcon);
+export const GhostModeIcon = make(ViewOffSlashIcon);
 export const NavBookmarksIcon = make(Bookmark02Icon);
 export const NavTrashIcon = make(Delete03Icon);
 export const NavAutomationIcon = make(WorkflowSquare03Icon);
@@ -181,7 +158,7 @@ export const LinuxOsIcon = make(TerminalIcon);
 export const AndroidOsIcon = make(AndroidIcon);
 
 /* ── Actions / affordances ── */
-export const RouteIcon = makeBrand("/brand-icons/proxy-ip.png", "proxy-ip");
+export const RouteIcon = make(Route01Icon);
 export const SearchIcon = make(Search01Icon);
 export const CopyIcon = make(Copy01Icon);
 export const DownloadIcon = make(Download04Icon);
@@ -208,9 +185,9 @@ export const HelpCircleIcon = make(HugeHelpCircleIcon);
 export const FolderIcon = make(Folder01Icon);
 export const InfoIcon = make(InformationCircleIcon);
 export const StarOutlineIcon = make(StarIcon);
-export const LockedIcon = makeBrand("/brand-icons/encryption-vault.png", "encryption-vault");
+export const LockedIcon = make(LockIcon);
 /** A profile's own password (#127): the row's lock, Set password; Change and Remove beside it. */
-export const PasswordIcon = makeBrand("/brand-icons/encryption-vault.png", "encryption-vault");
+export const PasswordIcon = make(SquareLock02Icon);
 export const ChangePasswordIcon = make(ResetPasswordIcon);
 export const RemovePasswordIcon = make(SquareUnlock02Icon);
 export const ChevronDownIcon = make(ArrowDown01Icon);
@@ -234,7 +211,7 @@ export const SyncConflictIcon = make(CloudAlertIcon, "sync-conflict");
 export const ExternalLinkIcon = make(ArrowUpRight01Icon);
 export const RestoreIcon = make(ArchiveRestoreIcon);
 export const UndoIcon = make(Undo02Icon);
-export const ComputerIcon = makeBrand("/brand-icons/user-agent.png", "user-agent");
+export const ComputerIcon = make(HugeComputerIcon);
 export const CheckCircleIcon = make(CheckmarkCircle02Icon);
 export const AlertIcon = make(Alert02Icon);
 /** A round alert glyph (the kit's own error mapping), not the warning triangle above. */
@@ -269,33 +246,46 @@ export const ChevronRightIcon = make(ArrowRight01Icon);
  *  `animate-spin`; it keeps turning under Reduce motion (ANIM-05). */
 export const SpinnerIcon = make(Loading03Icon, "spinner");
 
-export function ShardLogo({ size = 28, className }: { size?: number; className?: string }) {
+export function ShardLogo({ size = 24, className }: { size?: number; className?: string }) {
+  const height = Math.round((size * 18) / 20);
   return (
-    <img
-      src="/brand-icons/app-main.png"
-      alt=""
-      aria-hidden="true"
-      draggable={false}
-      width={size}
-      height={size}
-      style={{ width: size, height: size }}
-      className={cn("shrink-0 object-contain select-none", className)}
-    />
+    <svg width={size} height={height} viewBox="0 0 20 18" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
+      {/* L Protective Shield Stance */}
+      <path
+        d="M1 2C1 1.44772 1.44772 1 2 1H4.5C5.05228 1 5.5 1.44772 5.5 2V12.5H9C9.55228 12.5 10 12.9477 10 13.5V15.5C10 16.0523 9.55228 16.5 9 16.5H2C1.44772 16.5 1 16.0523 1 15.5V2Z"
+        fill="currentColor"
+      />
+      {/* P Browser Arc & Stem */}
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M8 2C8 1.44772 8.44772 1 9 1H13.8C16.948 1 19.5 3.552 19.5 6.7C19.5 9.848 16.948 12.4 13.8 12.4H11.5V15.5C11.5 16.0523 11.0523 16.5 10.5 16.5H8.5C7.94772 16.5 7.5 16.0523 7.5 15.5V2H8ZM11.5 4V9.4H13.8C15.291 9.4 16.5 8.191 16.5 6.7C16.5 5.209 15.291 4 13.8 4H11.5Z"
+        fill="currentColor"
+      />
+      {/* Antidetect Radar Iris */}
+      <circle cx="13.8" cy="6.7" r="1.5" fill="currentColor" />
+    </svg>
   );
 }
 
-export function ShardMini({ size = 20, className }: { size?: number; className?: string }) {
+export function ShardMini({ size = 18, className }: { size?: number; className?: string }) {
   return (
-    <img
-      src="/brand-icons/taskbar.png"
-      alt=""
-      aria-hidden="true"
-      draggable={false}
-      width={size}
-      height={size}
-      style={{ width: size, height: size }}
-      className={cn("shrink-0 object-contain select-none", className)}
-    />
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
+      {/* L Mini */}
+      <path
+        d="M1 1.5C1 1.22 1.22 1 1.5 1H3.5C3.78 1 4 1.22 4 1.5V11H7.5C7.78 11 8 11.22 8 11.5V13.5C8 13.78 7.78 14 7.5 14H1.5C1.22 14 1 13.78 1 13.5V1.5Z"
+        fill="currentColor"
+      />
+      {/* P Mini */}
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M6.5 1.5C6.5 1.22 6.72 1 7 1H11.5C13.985 1 16 3.015 16 5.5C16 7.985 13.985 10 11.5 10H9.5V13.5C9.5 13.78 9.28 14 9 14H7C6.72 14 6.5 13.78 6.5 13.5V1.5ZM9.5 3.5V7.5H11.5C12.605 7.5 13.5 6.605 13.5 5.5C13.5 4.395 12.605 3.5 11.5 3.5H9.5Z"
+        fill="currentColor"
+      />
+      {/* Iris */}
+      <circle cx="11.5" cy="5.5" r="1.2" fill="currentColor" />
+    </svg>
   );
 }
 
@@ -323,9 +313,8 @@ export const FOLDER_ICON_GLYPHS = {
   rocket: make(Rocket01Icon),
 };
 
-
-/** A step's glyph (see blockIcon in the automation entity): 14 px, decoration only. */
-export function StepIcon({ icon, ...rest }: IconProps & { icon: HugeiconsIconProps["icon"] }) {
+/** A step's glyph (see blockIcon in the automation entity): decoration only. */
+export function StepIcon({ icon, className, ...rest }: IconProps & { icon: HugeiconsIconProps["icon"] }) {
   return (
     <HugeiconsIcon
       icon={icon}
@@ -333,6 +322,7 @@ export function StepIcon({ icon, ...rest }: IconProps & { icon: HugeiconsIconPro
       data-step-icon=""
       aria-hidden="true"
       focusable="false"
+      className={cn(!rest.size && !hasExplicitSize(className) && "size-[17px]", className)}
       {...rest}
     />
   );

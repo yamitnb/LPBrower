@@ -51,7 +51,7 @@ export function BasicsTab({ draft }: { draft: ProfileFormDraft }) {
       <section className="flex flex-col gap-2.5 rounded-panel border border-stroke-soft-200 bg-bg-white-0 p-3.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <ComputerIcon className="size-[22px]" />
+            <ComputerIcon className="size-[19px] text-primary-base" />
             <h3 className="m-0 text-xs font-semibold text-text-strong-950">
               {t("inlineEditor.osLabel") || "Hệ điều hành giả lập"}
             </h3>

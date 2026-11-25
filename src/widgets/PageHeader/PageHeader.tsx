@@ -145,11 +145,11 @@ export function PageHeader({ title, lead, count, help, after, filter, actions, w
       data-scrolled={scrolled || undefined}
       className={cn(
         "@container relative z-(--layer-raised) flex h-[52px] shrink-0 items-center gap-3 scroll-edge px-gutter data-[scrolled]:bg-bg-page [@media(prefers-reduced-transparency:reduce)_and_(forced-colors:none)]:not-data-[scrolled]:after:bg-transparent",
-        HAS_CAPTIONS && "pe-[150px]",
+        HAS_CAPTIONS && "pe-[114px]",
       )}
       // The column's right edge: what the window has past the body's gutter
       // and its capped column, or the usual end room when that is less.
-      style={width !== "full" ? { paddingInlineEnd: `max(${HAS_CAPTIONS ? "150px" : "var(--spacing-gutter)"}, calc(100% - ${CAPPED[width]} - var(--spacing-gutter)))` } : undefined}
+      style={width !== "full" ? { paddingInlineEnd: `max(${HAS_CAPTIONS ? "114px" : "var(--spacing-gutter)"}, calc(100% - ${CAPPED[width]} - var(--spacing-gutter)))` } : undefined}
       onMouseDown={titleBarOnMouseDown}
     >
       {/* Up to 40% of the header, and the last thing to give way: it does
@@ -200,7 +200,7 @@ export function PageHeader({ title, lead, count, help, after, filter, actions, w
                 placeholder={placeholder}
                 aria-label={placeholder}
                 aria-keyshortcuts={filterKeys}
-                leftIcon={<SearchIcon className="size-3.5" />}
+                leftIcon={<SearchIcon className="size-[17px]" />}
                 value={filter.value}
                 onChange={(e) => filter.onChange(e.target.value)}
                 onKeyDown={onFilterKeyDown}
@@ -208,7 +208,7 @@ export function PageHeader({ title, lead, count, help, after, filter, actions, w
               />
             </div>
             <span className="group-data-[open]/filter:hidden">
-              <IconButton ref={searchBtnRef} mode="stroke" size="xsmall" label={placeholder} shortcut={filterKeys ? "/" : undefined} icon={<SearchIcon className="size-3.5" />} onClick={focusFilter} />
+              <IconButton ref={searchBtnRef} mode="stroke" size="xsmall" label={placeholder} shortcut={filterKeys ? "/" : undefined} icon={<SearchIcon className="size-[17px]" />} onClick={focusFilter} />
             </span>
           </div>
         )}

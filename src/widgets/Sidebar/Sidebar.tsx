@@ -228,10 +228,10 @@ function ExtensionsItem({ compact }: { compact: boolean }) {
       label={rail ? (n === 1 ? t("sidebar.extensionsRailOne", { n }) : t("sidebar.extensionsRailMany", { n })) : t("sidebar.navExtensions")}
       icon={rail ? (
         <span className="relative flex">
-          <NavExtensionsIcon className="size-[22px]" />
+          <NavExtensionsIcon className="size-[18px]" />
           <Badge data-update-count aria-hidden="true" color="warning" size="small" shape="pill" className="absolute -top-2 left-2.5 min-w-[14px] px-[3px]! leading-none">{n}</Badge>
         </span>
-      ) : <NavExtensionsIcon className="size-[22px]" />}
+      ) : <NavExtensionsIcon className="size-[18px]" />}
       compact={compact}
       badge={n > 0 ? <Badge data-update-count color="warning" size="small">{n}</Badge> : undefined}
       badgeLabel={n > 0 ? (n === 1 ? t("sidebar.extensionUpdatesOne", { n }) : t("sidebar.extensionUpdatesMany", { n })) : undefined}
@@ -267,7 +267,7 @@ function AllProfilesItem({ compact }: { compact: boolean }) {
     <NavItem
       size="small"
       data-nav="profiles"
-      icon={<NavBrowsersIcon className="size-[22px]" />}
+      icon={<NavBrowsersIcon className="size-[18px]" />}
       // The compact rail has no heading to carry the running count, so it
       // folds into this item's own accessible name and tooltip instead (no
       // information lost). Fix round 2: the same `ready` gate as the count
@@ -380,7 +380,7 @@ function FoldersGroup({ compact }: { compact: boolean }) {
           // "new profile"). Fix round 1, finding 4: the same row-button
           // hover rule as the list rows (the hover and active roles, with
           // the strong icon).
-          icon={<FolderAddIconApp className="size-3.5" />}
+          icon={<FolderAddIconApp className="size-[17px]" />}
           className={rowButtonHoverClass}
           size="3xsmall"
           disabled={!!noNewFolder}
@@ -419,7 +419,7 @@ function FoldersGroup({ compact }: { compact: boolean }) {
       {compact && (
         <NavItem
           size="small"
-          icon={<FolderAddIconApp className="size-3.5" />}
+          icon={<FolderAddIconApp className="size-[17px]" />}
           label={noNewFolder ? t("rights.labelWhy", { label: t("sidebar.newFolder"), why: noNewFolder }) : t("sidebar.newFolder")}
           collapsed
           aria-disabled={noNewFolder ? true : undefined}
@@ -894,7 +894,7 @@ function VersionItem({ compact }: { compact: boolean }) {
       size="small"
       // The app fetches What's new's code ahead when this is reached (App.tsx).
       data-nav="whats-new"
-      icon={<span className="brand-mark flex"><ShardMini size={22} /></span>}
+      icon={<span className="brand-mark flex text-primary-base"><ShardMini size={18} /></span>}
       label={t("sidebar.launcherVersion", { v: info?.current ?? "…" })}
       collapsed={compact}
       onClick={() => openWhatsNew(true)}
@@ -1015,7 +1015,7 @@ export function Sidebar() {
               className="flex items-center justify-center p-1 rounded-lg hover:bg-bg-subtle text-primary-base transition-colors cursor-pointer"
               title="LPBrower - Nhấp để mở rộng menu"
             >
-              <ShardLogo size={28} />
+              <ShardLogo size={24} />
             </button>
             <IconButton
               size="3xsmall"
@@ -1024,15 +1024,15 @@ export function Sidebar() {
               tooltipSide="right"
               shortcut={capOf(command("app.toggleSidebar"))}
               aria-keyshortcuts={ariaOf(command("app.toggleSidebar"))}
-              icon={<SidebarIcon className="size-4" />}
+              icon={<SidebarIcon className="size-[17px]" />}
               onClick={toggle}
             />
           </>
         ) : (
           <>
             <span data-brand className="flex items-center gap-2.5 text-ui font-bold text-text-strong-950">
-              <span className="brand-mark flex drop-shadow-xs"><ShardLogo size={32} /></span>
-              <span className="tracking-tight text-[15px] font-bold bg-gradient-to-r from-cyan-500 via-primary-base to-purple-500 bg-clip-text text-transparent">LPBrower</span>
+              <span className="brand-mark flex text-primary-base drop-shadow-xs"><ShardLogo size={26} /></span>
+              <span className="tracking-tight text-[15px] font-bold bg-gradient-to-r from-primary-text via-primary-base to-primary-text bg-clip-text text-transparent">LPBrower</span>
             </span>
             {/* Search icon + sidebar collapse icon neatly paired in the header. */}
             <div className="ml-auto flex items-center gap-0.5">
@@ -1045,7 +1045,7 @@ export function Sidebar() {
                 tooltipSide="bottom"
                 shortcut={capOf(command("app.palette"))}
                 aria-keyshortcuts={ariaOf(command("app.palette"))}
-                icon={<SearchIcon className="size-4" />}
+                icon={<SearchIcon className="size-[17px]" />}
                 onClick={() => usePalette.getState().setOpen(true)}
               />
               <IconButton
@@ -1055,7 +1055,7 @@ export function Sidebar() {
                 tooltipSide="bottom"
                 shortcut={capOf(command("app.toggleSidebar"))}
                 aria-keyshortcuts={ariaOf(command("app.toggleSidebar"))}
-                icon={<SidebarIcon className="size-4" />}
+                icon={<SidebarIcon className="size-[17px]" />}
                 onClick={toggle}
               />
             </div>
@@ -1081,8 +1081,8 @@ export function Sidebar() {
             />
           )}
           <AllProfilesItem compact={compact} />
-          <PageItem id="proxies" label={t("sidebar.navProxies")} icon={<RouteIcon className="size-[22px]" />} compact={compact} />
-          <PageItem id="fingerprints" label={t("sidebar.navFingerprints")} icon={<NavFingerprintsIcon className="size-[22px]" />} compact={compact} />
+          <PageItem id="proxies" label={t("sidebar.navProxies")} icon={<RouteIcon className="size-[18px]" />} compact={compact} />
+          <PageItem id="fingerprints" label={t("sidebar.navFingerprints")} icon={<NavFingerprintsIcon className="size-[18px]" />} compact={compact} />
           <ExtensionsItem compact={compact} />
           <PageItem id="bookmarks" label={t("sidebar.navBookmarks")} icon={<NavBookmarksIcon className="size-[18px]" />} compact={compact} />
           <PageItem id="automation" label={t("sidebar.navProjects")} icon={<NavAutomationIcon className="size-[18px]" />} compact={compact} />

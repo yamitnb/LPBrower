@@ -247,7 +247,7 @@ export function ProxyTab({ draft }: { draft: ProfileFormDraft }) {
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <RouteIcon className="size-[22px]" />
+          <RouteIcon className="size-[19px] text-primary-base" />
           <h3 className="m-0 text-xs font-semibold text-text-strong-950">
             Kết nối mạng &amp; Proxy
           </h3>
