@@ -537,15 +537,17 @@ mod tests {
 
         for p in [&plain, &badged] {
             let bytes = std::fs::read(p).unwrap();
-            assert!(bytes.len() > 6 + 16 * 5);
-            // ICONDIR header: reserved=0, type=1, count=5
-            assert_eq!(&bytes[0..6], &[0, 0, 1, 0, 5, 0]);
-            // Directory widths: 0 (256), 64, 48, 32, 16
+            assert!(bytes.len() > 6 + 16 * 7);
+            // ICONDIR header: reserved=0, type=1, count=7
+            assert_eq!(&bytes[0..6], &[0, 0, 1, 0, 7, 0]);
+            // Directory widths: 0 (256), 64, 48, 40, 32, 24, 16
             assert_eq!(bytes[6], 0);
             assert_eq!(bytes[6 + 16], 64);
             assert_eq!(bytes[6 + 32], 48);
-            assert_eq!(bytes[6 + 48], 32);
-            assert_eq!(bytes[6 + 64], 16);
+            assert_eq!(bytes[6 + 48], 40);
+            assert_eq!(bytes[6 + 64], 32);
+            assert_eq!(bytes[6 + 80], 24);
+            assert_eq!(bytes[6 + 96], 16);
             // First payload (256px) starts with PNG magic
             let off0 = u32::from_le_bytes(bytes[18..22].try_into().unwrap()) as usize;
             assert_eq!(&bytes[off0..off0 + 8], b"\x89PNG\r\n\x1a\n");

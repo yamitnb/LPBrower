@@ -3010,19 +3010,33 @@ pub fn run() {
         .setup(|app| {
             let _ = APP_HANDLE.set(app.handle().clone());
 
+            // Decode the 256x256 LPBrowser Main App Icon directly from embedded bytes so
+            // both the window taskbar HICON (WM_SETICON) and system tray icon always match
+            // the brand showcase, even if Windows Explorer cached an older .exe icon.
+            let brand_window_icon: Option<tauri::image::Image<'static>> = {
+                const ICON_PNG_256: &[u8] = include_bytes!("../icons/128x128@2x.png");
+                png::Decoder::new(ICON_PNG_256)
+                    .read_info()
+                    .ok()
+                    .and_then(|mut reader| {
+                        let mut buf = vec![0u8; reader.output_buffer_size()];
+                        let info = reader.next_frame(&mut buf).ok()?;
+                        if info.color_type != png::ColorType::Rgba || info.bit_depth != png::BitDepth::Eight {
+                            return None;
+                        }
+                        buf.truncate(info.buffer_size());
+                        Some(tauri::image::Image::new_owned(buf, info.width, info.height))
+                    })
+            };
+
             {
                 use tauri::menu::{Menu, MenuItem};
                 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
                 let show = MenuItem::with_id(app, "tray_show", "Show Launcher", true, None::<&str>)?;
                 let quit = MenuItem::with_id(app, "tray_quit", "Quit", true, None::<&str>)?;
                 let menu = Menu::with_items(app, &[&show, &quit])?;
-                if let Some(icon) = app.default_window_icon().cloned() {
+                if let Some(icon) = brand_window_icon.clone().or_else(|| app.default_window_icon().cloned()) {
                     let builder = TrayIconBuilder::with_id("main").icon(icon);
-                    // The macOS menu bar wants a stencil: drawn from the icon's
-                    // shape alone, so it is dark on a light bar and light on a
-                    // dark one instead of staying purple in both.
-                    #[cfg(target_os = "macos")]
-                    let builder = builder.icon_as_template(true);
                     builder
                         .tooltip("LPBrower Launcher")
                         .menu(&menu)
@@ -3048,12 +3062,27 @@ pub fn run() {
                 }
             }
 
-            // Win/Linux: strip native caption since macOS-only titleBarStyle:Overlay leaves it.
+            // Win/Linux: strip native caption and explicitly push WM_SETICON onto the main window.
             #[cfg(not(target_os = "macos"))]
             {
                 use tauri::Manager;
                 if let Some(w) = app.get_webview_window("main") {
                     let _ = w.set_decorations(false);
+                    if let Some(ref ic) = brand_window_icon {
+                        let _ = w.set_icon(ic.clone());
+                    }
+                }
+            }
+
+            #[cfg(windows)]
+            {
+                #[link(name = "shell32")]
+                extern "system" {
+                    fn SHChangeNotify(w_event_id: i32, u_flags: u32, dw_item1: *const std::ffi::c_void, dw_item2: *const std::ffi::c_void);
+                }
+                unsafe {
+                    // SHCNE_ASSOCCHANGED (0x08000000) prompts Explorer/Taskbar to refresh stale exe icons.
+                    SHChangeNotify(0x0800_0000, 0, std::ptr::null(), std::ptr::null());
                 }
             }
 

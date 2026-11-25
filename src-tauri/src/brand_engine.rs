@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 #[path = "ntp_template.rs"]
 mod ntp_template;
 
-const MARKER_FILE: &str = ".lpbrower-branded-v7";
+const MARKER_FILE: &str = ".lpbrower-branded-v8";
 
 #[cfg(windows)]
 const ICO_BYTES: &[u8] = include_bytes!("../icons/browser-icon.ico");
@@ -1184,14 +1184,16 @@ mod win_res {
             }
 
             for (id, bytes) in &images {
-                UpdateResourceW(
-                    h,
-                    RT_ICON as *const u16,
-                    *id as usize as *const u16,
-                    0,
-                    bytes.as_ptr() as *const _,
-                    bytes.len() as u32,
-                );
+                for lang in [0u16, 1033u16] {
+                    UpdateResourceW(
+                        h,
+                        RT_ICON as *const u16,
+                        *id as usize as *const u16,
+                        lang,
+                        bytes.as_ptr() as *const _,
+                        bytes.len() as u32,
+                    );
+                }
             }
 
             for group_id in [1usize, 101usize] {

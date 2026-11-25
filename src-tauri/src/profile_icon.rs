@@ -449,7 +449,7 @@ pub fn ensure_ico(
     }
 
     let master = render_icon_pixmap(taskbar_title, profile_name, color)?;
-    let sizes: [u32; 5] = [256, 64, 48, 32, 16];
+    let sizes: [u32; 7] = [256, 64, 48, 40, 32, 24, 16];
     let mut payloads: Vec<(u32, Vec<u8>)> = Vec::with_capacity(sizes.len());
     for sz in sizes {
         let scaled = downscale_pixmap(&master, sz)?;

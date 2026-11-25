@@ -254,7 +254,9 @@ def encode_ico_dib_rgba(img: Image.Image) -> bytes:
     return header + bgra.tobytes() + bytes(and_buf)
 
 
-def write_multi_ico(master: Image.Image, dst: Path, sizes: tuple[int, ...] = (256, 64, 48, 32, 16)) -> None:
+def write_multi_ico(
+    master: Image.Image, dst: Path, sizes: tuple[int, ...] = (256, 64, 48, 40, 32, 24, 16)
+) -> None:
     payloads: list[tuple[int, bytes]] = []
     for sz in sizes:
         scaled = master.resize((sz, sz), Image.Resampling.LANCZOS)
