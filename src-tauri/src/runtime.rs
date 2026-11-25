@@ -477,8 +477,24 @@ struct RemoteManifest {
 /// R2/S3 per-archive. Empty when unreachable, refusing, or out of budget — all
 /// three answer "no manifest", never an error, because `runtime_status` renders
 /// the interface behind this call.
+fn effective_manifest_url() -> String {
+    if let Ok(u) = std::env::var("LPBROWER_ENGINE_MANIFEST_URL") {
+        let trimmed = u.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    if let Ok(s) = crate::settings::load() {
+        if let Some(u) = s.engine_manifest_url.as_deref().map(str::trim).filter(|u| !u.is_empty()) {
+            return u.to_string();
+        }
+    }
+    MANIFEST_URL.to_string()
+}
+
 async fn fetch_manifest() -> RemoteManifest {
-    fetch_manifest_at(MANIFEST_URL, MANIFEST_TIMEOUT).await
+    let url = effective_manifest_url();
+    fetch_manifest_at(&url, MANIFEST_TIMEOUT).await
 }
 
 /// The fetch itself, address and budget passed in so a test can aim it at a
@@ -1544,7 +1560,8 @@ async fn runtime_status_inner(check_remote: bool) -> Result<RuntimeStatus, Strin
     }
 
     let manifest = if check_remote {
-        fetch_manifest_at(MANIFEST_URL, EXPLICIT_CHECK_TIMEOUT).await
+        let url = effective_manifest_url();
+        fetch_manifest_at(&url, EXPLICIT_CHECK_TIMEOUT).await
     } else {
         fetch_manifest().await
     };

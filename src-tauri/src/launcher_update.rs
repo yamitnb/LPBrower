@@ -61,6 +61,8 @@ pub struct LauncherOffer {
 struct ReleaseAsset {
     name: String,
     download_url: String,
+    /// GitHub API asset endpoint (`.../releases/assets/<id>`), required for private repo downloads.
+    api_url: Option<String>,
     size: u64,
     digest_sha256: Option<String>,
 }
@@ -70,6 +72,8 @@ struct FoundUpdate {
     offer: LauncherOffer,
     kind: InstallKind,
     download_url: Option<String>,
+    api_url: Option<String>,
+    auth_token: Option<String>,
     digest_sha256: Option<String>,
 }
 
@@ -293,6 +297,39 @@ pub fn cleanup_at_start(current_version: &str) {
     }
 }
 
+fn resolve_update_config() -> (String, Option<String>) {
+    let settings = crate::settings::load().ok();
+    let url = std::env::var("LPBROWER_UPDATE_URL")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            settings
+                .as_ref()
+                .and_then(|s| s.update_url.as_deref())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+        })
+        .unwrap_or_else(|| format!("https://api.github.com/repos/{RELEASE_REPO}/releases/latest"));
+
+    let token = std::env::var("LPBROWER_UPDATE_TOKEN")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            settings
+                .as_ref()
+                .and_then(|s| s.update_token.as_deref())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+        });
+    (url, token)
+}
+
+/// Parses either a GitHub Releases API payload (`assets[{browser_download_url, url, ...}]`)
+/// or a static `latest.json` manifest (`assets[{name, url, size, sha256}]`).
 fn parse_release_assets(body: &serde_json::Value) -> Vec<ReleaseAsset> {
     body.get("assets")
         .and_then(|v| v.as_array())
@@ -300,17 +337,29 @@ fn parse_release_assets(body: &serde_json::Value) -> Vec<ReleaseAsset> {
             arr.iter()
                 .filter_map(|item| {
                     let name = item.get("name")?.as_str()?.to_string();
-                    let download_url = item.get("browser_download_url")?.as_str()?.to_string();
+                    let download_url = item
+                        .get("browser_download_url")
+                        .or_else(|| item.get("url"))
+                        .and_then(|v| v.as_str())?
+                        .to_string();
+                    let api_url = item
+                        .get("browser_download_url")
+                        .and_then(|_| item.get("url"))
+                        .and_then(|v| v.as_str())
+                        .filter(|u| u.contains("/releases/assets/"))
+                        .map(String::from);
                     let size = item.get("size").and_then(|s| s.as_u64()).unwrap_or(0);
                     let digest_sha256 = item
                         .get("digest")
                         .and_then(|d| d.as_str())
                         .and_then(|s| s.strip_prefix("sha256:"))
+                        .or_else(|| item.get("sha256").and_then(|s| s.as_str()))
                         .map(|h| h.trim().to_ascii_lowercase())
                         .filter(|h| h.len() == 64);
                     Some(ReleaseAsset {
                         name,
                         download_url,
+                        api_url,
                         size,
                         digest_sha256,
                     })
@@ -320,60 +369,119 @@ fn parse_release_assets(body: &serde_json::Value) -> Vec<ReleaseAsset> {
         .unwrap_or_default()
 }
 
-/// Query GitHub Releases (`yamitnb/LPBrower/releases/latest`) for a newer launcher.
+/// Fallback for public GitHub repos when `api.github.com` returns 403/429 rate-limit:
+/// follow `https://github.com/<repo>/releases/latest` redirect to extract the latest tag
+/// and build direct release download URLs without consuming API quota.
+async fn fetch_via_github_redirect(
+    client: &reqwest::Client,
+) -> Option<(String, String, Vec<ReleaseAsset>)> {
+    let latest_web = format!("https://github.com/{RELEASE_REPO}/releases/latest");
+    let resp = client
+        .get(&latest_web)
+        .timeout(RELEASE_API_TIMEOUT)
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let final_url = resp.url().as_str().to_string();
+    let tag = final_url.rsplit("/tag/").next()?.trim().to_string();
+    if tag.is_empty() || tag.contains('/') || tag == "latest" {
+        return None;
+    }
+    let base = format!("https://github.com/{RELEASE_REPO}/releases/download/{tag}");
+    let known = [
+        "LPBrower.exe",
+        "LPBrower_Setup_x64.exe",
+        "LPBrower_Setup_x64.msi",
+        "LPBrower_Launcher_macOS_arm64.app.tar.gz",
+        "LPBrower_Setup_macOS_arm64.dmg",
+    ];
+    let assets = known
+        .iter()
+        .map(|name| ReleaseAsset {
+            name: (*name).to_string(),
+            download_url: format!("{base}/{name}"),
+            api_url: None,
+            size: 0,
+            digest_sha256: None,
+        })
+        .collect();
+    Some((tag, final_url, assets))
+}
+
+/// Query configured update feed (`latest.json` or GitHub Releases API) for a newer launcher.
 /// Returns `Ok(Some(offer))` if a newer version exists, `Ok(None)` if up to date,
-/// or `Err(...)` if the network/API is unreachable.
+/// or `Err(...)` if the server is unreachable or inaccessible.
 #[tauri::command]
 pub async fn launcher_update_offer(app: AppHandle) -> Result<Option<LauncherOffer>, String> {
     let current = app.package_info().version.to_string();
-    let url = format!("https://api.github.com/repos/{RELEASE_REPO}/releases/latest");
+    let (url, token) = resolve_update_config();
     let client = reqwest::Client::builder()
         .user_agent(format!("LPBrower-launcher/{current}"))
         .build()
         .map_err(|e| format!("Could not build HTTP client: {e}"))?;
 
-    let resp = client
+    let mut req = client
         .get(&url)
-        .header("Accept", "application/vnd.github+json")
-        .timeout(RELEASE_API_TIMEOUT)
+        .header("Accept", "application/vnd.github+json, application/json")
+        .timeout(RELEASE_API_TIMEOUT);
+    if let Some(ref tok) = token {
+        req = req.header("Authorization", format!("Bearer {tok}"));
+    }
+
+    let resp = req
         .send()
         .await
         .map_err(|e| format!("Could not reach update server: {e}"))?;
 
-    if !resp.status().is_success() {
+    let (latest_ver, release_url, release_notes, published_at, assets) = if resp.status().is_success() {
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Invalid update response: {e}"))?;
+        let Some(tag) = body
+            .get("tag_name")
+            .or_else(|| body.get("version"))
+            .and_then(|v| v.as_str())
+        else {
+            return Ok(None);
+        };
+        let ver = norm_ver(tag).to_string();
+        let rel_url = body
+            .get("html_url")
+            .or_else(|| body.get("release_url"))
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .or_else(|| Some(format!("https://github.com/{RELEASE_REPO}/releases/latest")));
+        let notes = body
+            .get("body")
+            .or_else(|| body.get("notes"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let pub_at = body
+            .get("published_at")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let assets = parse_release_assets(&body);
+        (ver, rel_url, notes, pub_at, assets)
+    } else if matches!(resp.status().as_u16(), 403 | 429) && token.is_none() && url.contains("api.github.com") {
+        // Rate-limited on public GitHub API -> fall back to web redirect cleanly.
+        let Some((tag, rel_url, assets)) = fetch_via_github_redirect(&client).await else {
+            return Err(format!("Update server returned HTTP {}", resp.status().as_u16()));
+        };
+        (norm_ver(&tag).to_string(), Some(rel_url), None, None, assets)
+    } else {
         return Err(format!("Update server returned HTTP {}", resp.status().as_u16()));
-    }
-
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("Invalid update response: {e}"))?;
-
-    let Some(tag) = body.get("tag_name").and_then(|v| v.as_str()) else {
-        return Ok(None);
     };
-    let latest_ver = norm_ver(tag).to_string();
+
     if !is_newer(&latest_ver, &current) {
         *FOUND.lock().unwrap_or_else(|e| e.into_inner()) = None;
         return Ok(None);
     }
 
-    let release_url = body
-        .get("html_url")
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .or_else(|| Some(format!("https://github.com/{RELEASE_REPO}/releases/latest")));
-    let release_notes = body
-        .get("body")
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-    let published_at = body
-        .get("published_at")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
-    let assets = parse_release_assets(&body);
     let allow_self_install = !cfg!(debug_assertions);
     let exe = std::env::current_exe().ok();
 
@@ -432,6 +540,8 @@ pub async fn launcher_update_offer(app: AppHandle) -> Result<Option<LauncherOffe
         offer: offer.clone(),
         kind,
         download_url: asset.map(|a| a.download_url.clone()),
+        api_url: asset.and_then(|a| a.api_url.clone()),
+        auth_token: token,
         digest_sha256: asset.and_then(|a| a.digest_sha256.clone()),
     });
 
@@ -565,8 +675,23 @@ pub async fn launcher_update_download(app: AppHandle) -> Result<String, String> 
         .build()
         .map_err(|e| format!("Could not build HTTP client: {e}"))?;
 
-    let mut resp = client
-        .get(&download_url)
+    // For private GitHub repos, download via the API asset URL with `Accept: application/octet-stream`
+    // and Bearer auth (reqwest automatically strips Authorization on cross-host blob redirects).
+    let mut req = if let (Some(ref tok), Some(ref api_u)) = (&found.auth_token, &found.api_url) {
+        client
+            .get(api_u)
+            .header("Authorization", format!("Bearer {tok}"))
+            .header("Accept", "application/octet-stream")
+    } else if let Some(ref tok) = found.auth_token {
+        client
+            .get(&download_url)
+            .header("Authorization", format!("Bearer {tok}"))
+    } else {
+        client.get(&download_url)
+    };
+    req = req.header("User-Agent", format!("LPBrower-launcher/{}", found.offer.current));
+
+    let mut resp = req
         .send()
         .await
         .map_err(|e| format!("Download failed: {e}"))?
@@ -876,30 +1001,35 @@ mod tests {
             ReleaseAsset {
                 name: "LPBrower.exe".into(),
                 download_url: "https://example.invalid/LPBrower.exe".into(),
+                api_url: None,
                 size: 45_000_000,
                 digest_sha256: None,
             },
             ReleaseAsset {
                 name: "LPBrower_Setup_x64.exe".into(),
                 download_url: "https://example.invalid/LPBrower_Setup_x64.exe".into(),
+                api_url: None,
                 size: 16_000_000,
                 digest_sha256: None,
             },
             ReleaseAsset {
                 name: "LPBrower_Setup_x64.msi".into(),
                 download_url: "https://example.invalid/LPBrower_Setup_x64.msi".into(),
+                api_url: None,
                 size: 20_000_000,
                 digest_sha256: None,
             },
             ReleaseAsset {
                 name: "LPBrower_Setup_macOS_arm64.dmg".into(),
                 download_url: "https://example.invalid/LPBrower_Setup_macOS_arm64.dmg".into(),
+                api_url: None,
                 size: 24_000_000,
                 digest_sha256: None,
             },
             ReleaseAsset {
                 name: "LPBrower_Launcher_macOS_arm64.app.tar.gz".into(),
                 download_url: "https://example.invalid/LPBrower_Launcher_macOS_arm64.app.tar.gz".into(),
+                api_url: None,
                 size: 25_000_000,
                 digest_sha256: None,
             },

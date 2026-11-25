@@ -21,6 +21,12 @@ export type Settings = {
   extra_args?: string;
   /** Ask the Web Store about linked extensions every 5 h (on when absent). */
   ext_update_check?: boolean;
+  /** Optional custom launcher update feed URL (latest.json or GitHub Releases API). */
+  update_url?: string | null;
+  /** Optional Bearer token for private GitHub repos or protected update feeds. */
+  update_token?: string | null;
+  /** Optional custom runtime.json URL for Core Chromium updates. */
+  engine_manifest_url?: string | null;
 };
 
 /** Where profiles, user-data, extensions and the trash live. */

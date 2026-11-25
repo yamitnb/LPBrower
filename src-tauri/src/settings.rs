@@ -62,6 +62,17 @@ pub struct Settings {
     /// (see `ensure_secret`); rotating it invalidates issued tokens.
     #[serde(default)]
     pub api_secret: String,
+
+    // ---- App & Core Chromium update overrides ----
+    /// Optional custom launcher update feed URL (`latest.json` or GitHub Releases API).
+    #[serde(default)]
+    pub update_url: Option<String>,
+    /// Optional Bearer token for private GitHub repos or protected update feeds.
+    #[serde(default)]
+    pub update_token: Option<String>,
+    /// Optional custom `runtime.json` URL for Core Chromium engine updates.
+    #[serde(default)]
+    pub engine_manifest_url: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -112,6 +123,9 @@ fn defaults() -> Settings {
         api_enabled: default_api_enabled(),
         api_port: default_api_port(),
         api_secret: String::new(),
+        update_url: None,
+        update_token: None,
+        engine_manifest_url: None,
     }
 }
 
