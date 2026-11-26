@@ -4,6 +4,7 @@ export type NoiseMode = "real" | "auto";
 export type WebRtcMode = "auto" | "tcp_only" | "block";
 export type GeoMode = "auto" | "manual";
 export type UiLanguage = "system" | "profile";
+export type AdBlockMode = "default" | "on" | "off";
 
 export type ProfileMeta = {
   id: string;
@@ -33,6 +34,8 @@ export type ProfileMeta = {
   extensions: string[];
   /// Phone/tablet fingerprint, decided in Rust by the core's own rule.
   mobile: boolean;
+  /** Per-profile ad blocker override: undefined/null = follow global setting. */
+  adblock?: boolean | null;
   /// Present while personal sync is connected (entities/sync).
   sync?: ProfileSync;
   /** Which space the row is from (local/profile.rs `Origin`). */
@@ -69,6 +72,8 @@ export type ProfileForm = {
   extensions: string[];
   /// Answer media questions the Android way. Phone profiles only.
   android_media: boolean;
+  /// Per-profile ad blocker setting: follow global default, force on, or force off.
+  adblock: AdBlockMode;
   /// How often the claimed display refreshes, in Hz. A page reads it by
   /// timing requestAnimationFrame; the browser can only slow frames down, so
   /// a claim above this machine's own panel quietly runs at the panel's rate.

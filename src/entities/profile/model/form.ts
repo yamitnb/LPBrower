@@ -13,6 +13,7 @@ export const defaultForm = (): ProfileForm => ({
   color: "",
   extensions: [],
   android_media: false,
+  adblock: "default",
   refresh_rate: 60,
   screen_w: 0,
   screen_h: 0,
@@ -70,6 +71,7 @@ export function fromStored(stored: any): ProfileForm {
   f.color = stored?._meta?.color ?? "";
   f.extensions = Array.isArray(stored?._meta?.extensions) ? stored._meta.extensions : [];
   f.android_media = stored?._meta?.android_media === true;
+  f.adblock = stored?._meta?.adblock === true ? "on" : stored?._meta?.adblock === false ? "off" : "default";
   // Empty for legacy profiles; snapped by useEffect.
   f.gpu_preset_id = stored?._meta?.gpu_preset_id ?? "";
   f.real_gpu = stored?._meta?.real_gpu === true;
@@ -141,6 +143,7 @@ export function toStored(f: ProfileForm, lib: FingerprintEntry | null, prev?: an
     ...(f.taskbar_title?.trim() ? { taskbar_title: f.taskbar_title.trim() } : {}),
     extensions: f.extensions,
     ...(f.android_media ? { android_media: true } : {}),
+    ...(f.adblock === "on" ? { adblock: true } : f.adblock === "off" ? { adblock: false } : {}),
     // The operator picked a resolution rather than taking the template's. The
     // launcher reads this to leave the global screen setting out of the launch:
     // that setting exists for macOS profiles, and applying it on top of a

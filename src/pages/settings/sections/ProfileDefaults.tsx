@@ -66,6 +66,14 @@ export function ProfileDefaultsSection({ s, setS }: SettingsProps) {
           <Switch aria-labelledby={labelId} aria-describedby={helpId} checked={s.show_profile_name ?? true} onChange={(on) => setS({ ...s, show_profile_name: on })} />
         )}
       />
+      <SettingRow
+        id="adblock"
+        title={t("settings.adblockLabel")}
+        help={t("settings.adblockHelp")}
+        control={({ labelId, helpId }) => (
+          <Switch aria-labelledby={labelId} aria-describedby={helpId} checked={s.adblock_enabled ?? false} onChange={(on) => setS({ ...s, adblock_enabled: on })} />
+        )}
+      />
       {/* Off, no password can be set; profiles that have one keep it. */}
       <SettingRow
         id="profile-passwords"

@@ -1,22 +1,43 @@
-import { useMemo } from "react";
-import { IconButton, Input, Tooltip } from "@proxyshard/shardx-ui-kit";
-import { TAG_NAME_MAX, useTags, type Tag } from "../../../entities/tag";
+import { useMemo, useState } from "react";
+import { Button, IconButton, Input, Tooltip } from "@proxyshard/shardx-ui-kit";
+import { clean as cleanTagName, nextTagColor, TAG_NAME_MAX, tagNameTaken, useTags, type Tag } from "../../../entities/tag";
+import type { LabelColorId } from "../../../shared/constants";
 import { deferDelete } from "../../../shared/lib/deferDelete";
 import { focusAfterRowDelete } from "../rowDelete";
-import { DeleteIcon } from "../../../shared/icons";
+import { AddIcon, DeleteIcon } from "../../../shared/icons";
 import { ColorRadios } from "../../../shared/ui/ColorRadios";
 import { useT } from "../../../shared/i18n";
+import { toast } from "../../../shared/model/toast";
 import { SettingsGroup } from "../SettingRow";
 import { queueTagOp, usePendingTag } from "../useSettingsDraft";
 import { teamRefusal, useRightsChange } from "../../../entities/space";
 
-/// Every tag, to rename, recolor or delete. A rename or a color waits for
-/// Save with the rest of the page (manual save); a delete runs at once,
-/// behind its Undo.
+/// Every tag, to create, rename, recolor or delete. Creating a tag saves it
+/// immediately; a rename or a color waits for Save with the rest of the page
+/// (manual save); a delete runs at once, behind its Undo.
 export function TagsSection() {
   const t = useT();
   const tags = useTags((s) => s.tags);
   const byProfile = useTags((s) => s.byProfile);
+  const create = useTags((s) => s.create);
+  useRightsChange();
+  const noCreate = teamRefusal("create");
+
+  const [newName, setNewName] = useState("");
+  const [pickedColor, setPickedColor] = useState<LabelColorId | null>(null);
+  const activeColor = pickedColor ?? nextTagColor(tags);
+  const cleaned = cleanTagName(newName);
+  const duplicate = cleaned.length > 0 && tagNameTaken(tags, cleaned);
+
+  const submitCreate = () => {
+    if (noCreate || !cleaned || duplicate) return;
+    const made = create(cleaned, activeColor);
+    if (!made) return;
+    setNewName("");
+    setPickedColor(null);
+    toast.saved(t("settings.tagCreated", { name: made.name }));
+  };
+
   // Profiles in the Trash count too: they keep their tags, and lose them on delete.
   const counts = useMemo(() => {
     const out = new Map<string, number>();
@@ -25,16 +46,62 @@ export function TagsSection() {
   }, [byProfile]);
 
   return (
-    // An empty list is one centered line, with no help above it (owner rule).
-    <SettingsGroup list help={tags.length > 0 ? t("settings.tagsHelp") : undefined}>
-      {tags.length === 0 ? (
-        <p className="m-0 py-6 text-center text-body text-balance text-text-sub-600">{t("settings.tagsEmpty")}</p>
-      ) : (
-        <ul className="m-0 flex list-none flex-col p-0">
-          {tags.map((tag) => <TagRow key={tag.id} tag={tag} count={counts.get(tag.id) ?? 0} />)}
-        </ul>
-      )}
-    </SettingsGroup>
+    <div className="flex flex-col gap-5">
+      <SettingsGroup title={t("settings.tagCreateTitle")} list>
+        <div className="flex flex-wrap items-center gap-4 px-cell py-3">
+          <Tooltip content={noCreate ?? undefined}>
+            <div className="w-[220px] shrink-0">
+              <Input
+                aria-label={t("settings.tagCreateTitle")}
+                placeholder={t("settings.tagCreatePlaceholder")}
+                inputSize="xsmall"
+                value={newName}
+                disabled={!!noCreate}
+                maxLength={TAG_NAME_MAX}
+                error={duplicate ? t("settings.tagsNameTaken", { name: cleaned }) : undefined}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    submitCreate();
+                  }
+                }}
+              />
+            </div>
+          </Tooltip>
+          <fieldset disabled={!!noCreate} className="m-0 min-w-0 border-0 p-0">
+            <ColorRadios
+              label={t("settings.tagCreateTitle")}
+              value={activeColor}
+              onChange={(c) => { if (c && !noCreate) setPickedColor(c); }}
+            />
+          </fieldset>
+          <Button
+            variant="primary"
+            mode="filled"
+            size="xsmall"
+            className="ml-auto shrink-0"
+            leftIcon={<AddIcon className="size-3.5" />}
+            disabled={!!noCreate || !cleaned || duplicate}
+            onClick={submitCreate}
+          >
+            {t("settings.tagCreateButton")}
+          </Button>
+        </div>
+      </SettingsGroup>
+
+      {/* An empty list is one centered line, with no help above it (owner rule). */}
+      <SettingsGroup list help={tags.length > 0 ? t("settings.tagsHelp") : undefined}>
+        {tags.length === 0 ? (
+          <p className="m-0 py-6 text-center text-body text-balance text-text-sub-600">{t("settings.tagsEmpty")}</p>
+        ) : (
+          <ul className="m-0 flex list-none flex-col p-0">
+            {tags.map((tag) => <TagRow key={tag.id} tag={tag} count={counts.get(tag.id) ?? 0} />)}
+          </ul>
+        )}
+      </SettingsGroup>
+    </div>
   );
 }
 

@@ -8,7 +8,7 @@ import type { LabelColorId } from "../../shared/constants";
 import { riskyLaunchArgs } from "../../shared/lib/launchArgs";
 import { confirmModal } from "../../shared/lib/confirm";
 import { toast } from "../../shared/model/toast";
-import { t, useLang } from "../../shared/i18n";
+import { loadAllLangs, t, useLang } from "../../shared/i18n";
 import { analyticsEnabled } from "../../shared/lib/analytics";
 import { useDirectStart } from "../../shared/model/directStart";
 import { useInterfaceSize } from "../../shared/model/interfaceSize";
@@ -257,6 +257,8 @@ async function run(): Promise<boolean> {
   const prefsToSave = livePrefs(first.prefs);
   if (!isDirty(first, useTags.getState().tags, useViews.getState().views)) return true;
   if (Object.keys(first.holds).length > 0) return false;
+  // Built-in View names span all languages; load them before validating renames.
+  if (live.viewOps.some((o) => o.kind === "rename")) await loadAllLangs();
   // A taken name fails the save before anything is written.
   const plan = planOps(live);
   if (Object.keys(plan.errors).length > 0) {

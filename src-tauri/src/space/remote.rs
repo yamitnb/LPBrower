@@ -159,6 +159,7 @@ pub fn meta(team: &str, row: &ProfileRow, detail: Option<&StoredProfile>, device
         extensions: detail.map(|d| d.meta.extensions.clone()).unwrap_or_default(),
         mobile: detail.is_some_and(|d| claims_mobile(&d.config)),
         android_media: detail.is_some_and(|d| d.meta.android_media),
+        adblock: detail.and_then(|d| d.meta.adblock),
         origin: Origin::Team,
         rights: Some(perm::rights(team, &row.id, &row.folder)),
         open_on: row.open_on.as_ref().map(|l| open_on(l, device_id)),

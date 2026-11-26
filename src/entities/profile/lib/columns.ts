@@ -80,10 +80,15 @@ export function fromOldColumns(raw: unknown): ProfileColumns {
   return { order: set.order, hidden: [...set.hidden.filter((id) => !(off as readonly string[]).includes(id)), ...off] };
 }
 
-/** A View's saved columns, in either shape; anything else is the default. */
+/** A View's saved columns, in either shape; order is normalized to the fixed canonical order. */
 export function readProfileColumns(raw: unknown): ProfileColumns {
-  if (raw && typeof raw === "object" && Array.isArray((raw as { order?: unknown }).order)) return normalizeSet(PROFILE_COLUMNS, raw);
-  if (raw && typeof raw === "object") return fromOldColumns(raw);
+  const canonicalOrder = PROFILE_COLUMNS.map((d) => d.id);
+  if (raw && typeof raw === "object" && Array.isArray((raw as { order?: unknown }).order)) {
+    return { order: canonicalOrder, hidden: normalizeSet(PROFILE_COLUMNS, raw).hidden };
+  }
+  if (raw && typeof raw === "object") {
+    return { order: canonicalOrder, hidden: fromOldColumns(raw).hidden };
+  }
   return defaultSet(PROFILE_COLUMNS);
 }
 

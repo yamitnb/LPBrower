@@ -1,0 +1,23 @@
+/* LPBrowser Search Sponsored Ads Cosmetic Rules */
+#tads,
+#tadsb,
+#tvcap,
+#bottomads,
+[data-text-ad],
+.commercial-unit-desktop-top,
+.commercial-unit-desktop-rhs,
+.commercial-unit-mobile-top,
+.cu-container,
+.pla-unit-container,
+.mnr-c.pla-unit,
+.b_ad,
+.b_adTop,
+.b_adBottom,
+.b_adSlug,
+li.b_ad,
+.ad_sc,
+#ads,
+li[data-layout="ad"],
+.results--ads {
+  display: none !important;
+}

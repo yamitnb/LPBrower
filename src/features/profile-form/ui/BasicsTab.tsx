@@ -13,7 +13,7 @@ import { PASSWORD_MIN, passwordProblem, useProfile } from "../../../entities/pro
 import { useProfilePasswords } from "../../../entities/settings";
 import { HOST_OS } from "../../../shared/lib/utils";
 import { osIdFor } from "../../../shared/constants";
-import { ColorRow, CookiesRow, NotesRow, TaskbarTitleRow } from "./fields";
+import { AdBlockRow, ColorRow, CookiesRow, NotesRow, TaskbarTitleRow } from "./fields";
 import { teamRefusal, useInTeam, useRightsChange } from "../../../entities/space";
 import { TagsField } from "./TagsField";
 import { ProxyTab } from "./ProxyTab";
@@ -127,6 +127,7 @@ export function BasicsTab({ draft }: { draft: ProfileFormDraft }) {
               onCreate={teamRefusal("create") ? undefined : addTagName}
             />
             <ColorRow value={f.color} onChange={(color) => patchForm({ color })} />
+            <AdBlockRow value={f.adblock} onChange={(adblock) => patchForm({ adblock })} />
             <NotesRow value={f.notes} onChange={(notes) => patchForm({ notes })} />
             {!team && !locked && <CookiesRow value={draft.cookies} onChange={(cookies) => patchDraft({ cookies })} />}
           </div>

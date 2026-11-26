@@ -15,6 +15,8 @@ export type Settings = {
   show_profile_name?: boolean;
   /** A password can be set on a profile (#127); off by default. Protected ones stay so when it goes off. */
   profile_passwords?: boolean;
+  /** Built-in MV3 ad & tracker blocker enabled globally for launched browsers. */
+  adblock_enabled?: boolean;
   /** Hide to the tray on close instead of quitting. */
   minimize_to_tray?: boolean;
   /** Appended to every launch, one per line. Applied last, so a repeat wins. */

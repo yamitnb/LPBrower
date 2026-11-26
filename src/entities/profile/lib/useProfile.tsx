@@ -43,7 +43,7 @@ import { cloneRefusal, isTeamRow, letThrough, lockedRefusal, moveRefusal, profil
 import { isLockedStub, isProtected, isWrongPassword } from "./lock";
 import { askPassword } from "../../../shared/model/passwordAsk";
 import { LOCK_REFUSALS } from "../../../shared/api/lockRefusals";
-import { loadProfilePasswords } from "../../settings";
+import { loadAdblock, loadProfilePasswords } from "../../settings";
 
 /** How long a start or stop may run ahead of the poll before the poll wins. */
 const PENDING_MS = 20_000;
@@ -650,8 +650,9 @@ export const useProfile = create<ProfileStore>((set, get) => ({
   init: async () => {
     if (get().status === "loading" || get().status === "ready") return;
     set({ status: "loading" });
-    // Whether a password may be set, for the rows' menus.
+    // Whether a password may be set, for the rows' menus, and global adblock status.
     loadProfilePasswords();
+    loadAdblock();
     // Listeners first, and once: a library that lands while the list loads
     // (the first engine download) must not be missed; a retried load must
     // not register them twice.

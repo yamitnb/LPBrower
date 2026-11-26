@@ -490,6 +490,7 @@ pub mod profile {
             extensions: stored.meta.extensions.clone(),
             mobile: claims_mobile(&stored.config),
             android_media: stored.meta.android_media,
+            adblock: stored.meta.adblock,
             origin: Origin::Personal,
             rights: None,
             open_on: None,

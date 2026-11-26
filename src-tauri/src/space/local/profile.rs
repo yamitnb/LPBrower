@@ -82,6 +82,9 @@ pub struct ProfileMeta {
     /// Whether this profile answers media questions the Android way.
     #[serde(default)]
     pub android_media: bool,
+    /// Per-profile ad blocker override: `None` = follow global setting, `Some(true)` = on, `Some(false)` = off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adblock: Option<bool>,
     /// Which space the row is from.
     #[serde(default)]
     pub origin: Origin,
@@ -180,6 +183,9 @@ pub struct StoredMeta {
     /// Blending in and playing video pull apart here, so the operator chooses.
     #[serde(default, skip_serializing_if = "is_false")]
     pub android_media: bool,
+    /// Per-profile ad blocker override (`None` = follow global setting).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adblock: Option<bool>,
     /// Bumped by every write. An editor sends back the number it opened, so a
     /// save landing on top of someone else's is refused instead of silent.
     #[serde(default)]
@@ -348,6 +354,7 @@ pub(in crate::space) fn list_all() -> Result<Vec<ProfileMeta>> {
             extensions: stored.meta.extensions,
             mobile: claims_mobile(&stored.config),
             android_media: stored.meta.android_media,
+            adblock: stored.meta.adblock,
             origin: Origin::Personal,
             rights: None,
             open_on: None,
@@ -696,6 +703,7 @@ pub(in crate::space) fn clone_profile(id: &str) -> Result<ProfileMeta> {
         extensions: src.meta.extensions,
         mobile: claims_mobile(&src.config),
         android_media: src.meta.android_media,
+        adblock: src.meta.adblock,
         origin: Origin::Personal,
         rights: None,
         open_on: None,

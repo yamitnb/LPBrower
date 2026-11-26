@@ -632,6 +632,8 @@ pub(crate) async fn launch_with(engine: PathBuf, profile_id: &str, enable_cdp: b
 struct Ready<'a> {
     fp_file: &'a Path,
     icon: Option<&'a Path>,
+    /// Built-in MV3 ad blocker extension directory, present when ad blocking is active.
+    adblock_ext: Option<&'a Path>,
     /// Custom window/taskbar title (`--window-name`), when configured on the profile.
     taskbar_title: Option<&'a str>,
     /// The profile as the engine reads it: no `_meta`, "auto" resolved.
@@ -686,9 +688,10 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
     let need_geo = want_auto || need_proxy_public_ip;
 
     // Prepare blocking filesystem tasks (engine cap check, branding check,
-    // Widevine pre-warm, per-profile taskbar icon, folder bookmarks, prefs
-    // migration) so they run concurrently with any network probes below.
-    let check_ext_alone = !input.extensions.is_empty() || input.library.is_some();
+    // Widevine pre-warm, per-profile taskbar icon, ad blocker extension, folder
+    // bookmarks, prefs migration) so they run concurrently with any network probes below.
+    let want_adblock = crate::adblock::effective_enabled(s.adblock_enabled, input.stored.meta.adblock);
+    let check_ext_alone = !input.extensions.is_empty() || input.library.is_some() || want_adblock;
     let bin_for_prep = bin.to_path_buf();
     let udd_for_prep = input.udd.clone();
     let folder_for_prep = input.stored.meta.folder.clone();
@@ -762,6 +765,22 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
                 None
             }
         };
+        let adblock_ext = if want_adblock && !cfg!(test) {
+            match crate::runtime::runtime_dir()
+                .and_then(|dir| crate::adblock::ensure_extension(&dir).map_err(anyhow::Error::from))
+            {
+                Ok(path) => Some(path),
+                Err(e) => {
+                    eprintln!("[launcher] adblock extension unavailable: {e:#}");
+                    None
+                }
+            }
+        } else {
+            if !want_adblock {
+                crate::adblock::purge_from_profile_prefs(&udd_for_prep);
+            }
+            None
+        };
         match bookmarks::apply_to_profile(&udd_for_prep, &folder_for_prep, &bookmarks_for_prep) {
             Ok(n) if n > 0 => eprintln!("[launcher] {n} folder bookmark(s) applied"),
             Ok(_) => {}
@@ -770,7 +789,7 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
         let widevine_cached = store::widevine_cache_dir()
             .map(|d| d.join("manifest.json").is_file())
             .unwrap_or(false);
-        (effective_bin, ext_alone, icon, widevine_cached)
+        (effective_bin, ext_alone, icon, adblock_ext, widevine_cached)
     });
 
     // Run UDP capability probe, cached/fast geo lookup, local proxy tunnel pre-warming,
@@ -823,8 +842,8 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
 
     let (proxy_udp_ok, live_geo, eager_tunnel, prep_res) =
         tokio::join!(udp_fut, geo_fut, eager_tunnel_fut, prep_task);
-    let (effective_bin, ext_alone, icon, widevine_cached) =
-        prep_res.unwrap_or_else(|_| (bin.to_path_buf(), false, None, false));
+    let (effective_bin, ext_alone, icon, adblock_ext, widevine_cached) =
+        prep_res.unwrap_or_else(|_| (bin.to_path_buf(), false, None, None, false));
 
     // If SOCKS5 had no cached UDP status before `udp_fut` ran and turned out not to
     // relay UDP, route it through the local HTTP tunnel so Chromium never fires
@@ -892,6 +911,7 @@ async fn start_browser(bin: &Path, input: LaunchInput, opts: &LaunchOpts<'_>) ->
         &Ready {
             fp_file: &fp_file,
             icon: icon.as_deref(),
+            adblock_ext: adblock_ext.as_deref(),
             taskbar_title: taskbar_title_for_launch.as_deref(),
             raw: &raw,
             proxy_udp_ok,
@@ -1024,9 +1044,12 @@ fn command_line(
 
     // An older engine drops --load-extension under Enhanced Safe Browsing and needs the same
     // list as --disable-extensions-except, which also hides the profile's own extensions.
-    if !input.extensions.is_empty() {
-        let joined = input
-            .extensions
+    let mut load_exts: Vec<&Path> = input.extensions.iter().map(PathBuf::as_path).collect();
+    if let Some(adblock) = ready.adblock_ext {
+        load_exts.push(adblock);
+    }
+    if !load_exts.is_empty() {
+        let joined = load_exts
             .iter()
             .map(|p| p.display().to_string())
             .collect::<Vec<_>>()
@@ -1847,7 +1870,13 @@ mod tests {
         argv_on(false, input, opts, s)
     }
 
-    fn argv_on(ext_alone: bool, input: &LaunchInput, opts: &LaunchOpts, s: &crate::settings::Settings) -> Vec<String> {
+    fn argv_on_with(
+        ext_alone: bool,
+        adblock_ext: Option<&std::path::Path>,
+        input: &LaunchInput,
+        opts: &LaunchOpts,
+        s: &crate::settings::Settings,
+    ) -> Vec<String> {
         let mut raw = input.stored.config.clone();
         raw.remove("_meta");
         // Spelled out rather than joined, so the snapshot reads the same on Windows.
@@ -1856,6 +1885,7 @@ mod tests {
         let ready = Ready {
             fp_file: &fp,
             icon: Some(&icon),
+            adblock_ext,
             taskbar_title: input
                 .stored
                 .meta
@@ -1874,6 +1904,10 @@ mod tests {
             ext_alone,
         };
         command_line(input, &ready, opts, s)
+    }
+
+    fn argv_on(ext_alone: bool, input: &LaunchInput, opts: &LaunchOpts, s: &crate::settings::Settings) -> Vec<String> {
+        argv_on_with(ext_alone, None, input, opts, s)
     }
 
     const UI: LaunchOpts = LaunchOpts { enable_cdp: false, headless: false, sync_group: None, bus_port: 4242, bus_token: "tok", space: None, password: None };
@@ -2326,5 +2360,40 @@ mod tests {
         assert!(!raw_only_size.contains_key("window"));
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn adblock_extension_loads_and_merges_without_disabling_web_store_extensions() {
+        let adblock_dir = PathBuf::from("/runtime/lpbrowser-adblock");
+
+        // Plain profile with no library extensions + new engine + adblock ON:
+        // loads only the ad blocker via --load-extension and omits --disable-extensions-except.
+        let p_plain = input(json!({ "_meta": { "id": "p-ab1", "rev": 1 } }), None);
+        let args_plain = argv_on_with(true, Some(&adblock_dir), &p_plain, &UI, &settings());
+        assert!(
+            args_plain.iter().any(|a| a == "--load-extension=/runtime/lpbrowser-adblock"),
+            "{args_plain:?}"
+        );
+        assert!(
+            !args_plain.iter().any(|a| a.starts_with("--disable-extensions-except")),
+            "{args_plain:?}"
+        );
+
+        // Profile with user library extensions + adblock ON: merges both in --load-extension.
+        let p_with_ext = input(
+            json!({ "_meta": { "id": "p-ab2", "rev": 1, "extensions": ["e1"] } }),
+            None,
+        );
+        let args_merged = argv_on_with(true, Some(&adblock_dir), &p_with_ext, &UI, &settings());
+        assert!(
+            args_merged
+                .iter()
+                .any(|a| a == "--load-extension=/data/extensions/e1,/runtime/lpbrowser-adblock"),
+            "{args_merged:?}"
+        );
+
+        // Profile with adblock OFF: adblock dir does not appear in args.
+        let args_off = argv_on_with(true, None, &p_plain, &UI, &settings());
+        assert!(!args_off.iter().any(|a| a.contains("lpbrowser-adblock")), "{args_off:?}");
     }
 }

@@ -6,6 +6,7 @@
  */
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ICON_STROKE, cn } from "@proxyshard/shardx-ui-kit";
+import lpbrowserAppIcon from "../assets/lpbrowser-app-icon.png";
 import {
   ArrowLeft01Icon,
   UserIcon,
@@ -100,6 +101,8 @@ import {
   CloudSyncIcon,
   CloudOffIcon,
   CloudAlertIcon,
+  SecurityCheckIcon,
+  Shield01Icon,
 } from "@hugeicons/core-free-icons";
 import type { ComponentProps } from "react";
 
@@ -245,47 +248,37 @@ export const ChevronRightIcon = make(ArrowRight01Icon);
  *  Button's spinner draws, so the app has one spinner. Turn it with
  *  `animate-spin`; it keeps turning under Reduce motion (ANIM-05). */
 export const SpinnerIcon = make(Loading03Icon, "spinner");
+/** Built-in Ad Blocker status icons (shield with check = ON, plain shield = OFF). */
+export const AdBlockOnIcon = make(SecurityCheckIcon, "adblock-on");
+export const AdBlockOffIcon = make(Shield01Icon, "adblock-off");
 
 export function ShardLogo({ size = 24, className }: { size?: number; className?: string }) {
-  const height = Math.round((size * 18) / 20);
   return (
-    <svg width={size} height={height} viewBox="0 0 20 18" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
-      {/* L Protective Shield Stance */}
-      <path
-        d="M1 2C1 1.44772 1.44772 1 2 1H4.5C5.05228 1 5.5 1.44772 5.5 2V12.5H9C9.55228 12.5 10 12.9477 10 13.5V15.5C10 16.0523 9.55228 16.5 9 16.5H2C1.44772 16.5 1 16.0523 1 15.5V2Z"
-        fill="currentColor"
-      />
-      {/* P Browser Arc & Stem */}
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M8 2C8 1.44772 8.44772 1 9 1H13.8C16.948 1 19.5 3.552 19.5 6.7C19.5 9.848 16.948 12.4 13.8 12.4H11.5V15.5C11.5 16.0523 11.0523 16.5 10.5 16.5H8.5C7.94772 16.5 7.5 16.0523 7.5 15.5V2H8ZM11.5 4V9.4H13.8C15.291 9.4 16.5 8.191 16.5 6.7C16.5 5.209 15.291 4 13.8 4H11.5Z"
-        fill="currentColor"
-      />
-      {/* Antidetect Radar Iris */}
-      <circle cx="13.8" cy="6.7" r="1.5" fill="currentColor" />
-    </svg>
+    <img
+      src={lpbrowserAppIcon}
+      alt=""
+      aria-hidden="true"
+      draggable={false}
+      width={size}
+      height={size}
+      style={{ width: size, height: size }}
+      className={cn("shrink-0 object-contain drop-shadow-xs select-none", className)}
+    />
   );
 }
 
 export function ShardMini({ size = 18, className }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
-      {/* L Mini */}
-      <path
-        d="M1 1.5C1 1.22 1.22 1 1.5 1H3.5C3.78 1 4 1.22 4 1.5V11H7.5C7.78 11 8 11.22 8 11.5V13.5C8 13.78 7.78 14 7.5 14H1.5C1.22 14 1 13.78 1 13.5V1.5Z"
-        fill="currentColor"
-      />
-      {/* P Mini */}
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M6.5 1.5C6.5 1.22 6.72 1 7 1H11.5C13.985 1 16 3.015 16 5.5C16 7.985 13.985 10 11.5 10H9.5V13.5C9.5 13.78 9.28 14 9 14H7C6.72 14 6.5 13.78 6.5 13.5V1.5ZM9.5 3.5V7.5H11.5C12.605 7.5 13.5 6.605 13.5 5.5C13.5 4.395 12.605 3.5 11.5 3.5H9.5Z"
-        fill="currentColor"
-      />
-      {/* Iris */}
-      <circle cx="11.5" cy="5.5" r="1.2" fill="currentColor" />
-    </svg>
+    <img
+      src={lpbrowserAppIcon}
+      alt=""
+      aria-hidden="true"
+      draggable={false}
+      width={size}
+      height={size}
+      style={{ width: size, height: size }}
+      className={cn("shrink-0 object-contain drop-shadow-xs select-none", className)}
+    />
   );
 }
 

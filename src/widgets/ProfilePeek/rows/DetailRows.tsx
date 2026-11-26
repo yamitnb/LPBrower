@@ -1,6 +1,6 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ACCENT_HEX, AUTO_LANG, AUTO_TZ, LABEL_COLORS, LOCALES, OS_OPTIONS, osIdFor } from "../../../shared/constants";
-import { AlertIcon } from "../../../shared/icons";
+import { AdBlockOffIcon, AdBlockOnIcon, AlertIcon } from "../../../shared/icons";
 import { HOST_OS } from "../../../shared/lib/utils";
 import { CountryFlag } from "../../../shared/ui/CountryFlag";
 import { FolderChip } from "../../../shared/ui/FolderChip";
@@ -11,13 +11,15 @@ import { ProtocolPill } from "../../../shared/ui/ProtocolPill";
 import { TagChip } from "../../../shared/ui/TagChip";
 import { TaskbarTitleBadge } from "../../../shared/ui/TaskbarTitleBadge";
 import { useT } from "../../../shared/i18n";
-import { isProtected, openElsewhere, proxyHidden, proxyMissing, useFolderLook, useProfile, type ProfileForm, type ProfileMeta, type ProfileRight } from "../../../entities/profile";
+import { isProtected, may, openElsewhere, proxyHidden, proxyMissing, useFolderLook, useProfile, type ProfileForm, type ProfileMeta, type ProfileRight } from "../../../entities/profile";
 import { rightName } from "../../../entities/space";
 import { useExtensions } from "../../../entities/extension";
+import { useAdblock } from "../../../entities/settings";
 import { useProfileTags } from "../../../entities/tag";
 import { useSync } from "../../../entities/sync";
 import { useScreenChoice } from "../../../features/manage-profiles/ui/fields";
 import { openProfileForm, type ProfileFormTab } from "../../../features/profile-form";
+import { TagPicker } from "../../../features/manage-tags";
 
 /// Peek's Profile and Fingerprint sections as rows of label and value: what
 /// the profile has, read. Nothing here changes it; a section's Edit, and the
@@ -40,11 +42,12 @@ export function ProfileDetails({ profile }: { profile: ProfileMeta }) {
         <TaskbarTitleDetail value={profile.taskbar_title.trim()} color={profile.color ?? ""} />
       )}
       <FolderDetail folder={profile.folder} />
-      <TagsDetail profileId={profile.id} />
+      <TagsDetail profileId={profile.id} canEdit={may(profile, "edit")} />
       <ColorDetail color={profile.color ?? ""} />
       {isProtected(profile) && <PasswordDetail />}
       <ProxyDetail profile={profile} />
       <ExtensionsDetail profile={profile} />
+      <AdBlockDetail profile={profile} />
       <NotesDetail notes={profile.notes} locked={isProtected(profile)} />
       {profile.sync && <SyncDetail profile={profile} />}
       {profile.rights && <AccessDetail profile={profile} />}
@@ -80,16 +83,32 @@ function FolderDetail({ folder }: { folder: string }) {
   );
 }
 
-function TagsDetail({ profileId }: { profileId: string }) {
+function TagsDetail({ profileId, canEdit }: { profileId: string; canEdit: boolean }) {
   const t = useT();
   const tags = useProfileTags(profileId);
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
   return (
     <PropertyRow id="tags" label={t("peek.tags")}>
-      {() => (
-        <Value empty={tags.length === 0} wrap>
-          {tags.length === 0 ? <span className="truncate">{t("peek.noTags")}</span> : tags.map((tag) => <TagChip key={tag.id} tag={tag} />)}
-        </Value>
-      )}
+      {(labelId) =>
+        canEdit ? (
+          <>
+            <PropertyButton ref={anchor} labelledBy={labelId} empty={tags.length === 0} wrap expanded={open} onClick={() => setOpen((v) => !v)}>
+              {tags.length === 0 ? <span className="truncate">{t("peek.noTags")}</span> : tags.map((tag) => <TagChip key={tag.id} tag={tag} />)}
+            </PropertyButton>
+            <TagPicker
+              open={open}
+              profileIds={[profileId]}
+              anchorRef={anchor}
+              triggerRef={anchor}
+              onClose={() => setOpen(false)}
+            />
+          </>
+        ) : (
+          <Value empty={tags.length === 0} wrap>
+            {tags.length === 0 ? <span className="truncate">{t("peek.noTags")}</span> : tags.map((tag) => <TagChip key={tag.id} tag={tag} />)}
+          </Value>
+        )}
     </PropertyRow>
   );
 }
@@ -187,6 +206,38 @@ function ExtensionsDetail({ profile }: { profile: ProfileMeta }) {
       {(labelId) => (
         <Link labelId={labelId} id={profile.id} tab="extensions" empty={n === 0}>
           <span className="truncate">{words}</span>
+        </Link>
+      )}
+    </PropertyRow>
+  );
+}
+
+function AdBlockDetail({ profile }: { profile: ProfileMeta }) {
+  const t = useT();
+  const globalOn = useAdblock((s) => s.on);
+  const override = profile.adblock;
+  const effectiveOn = override === true || (override == null && globalOn);
+  const text =
+    override === true
+      ? t("adblock.peekOnOverride")
+      : override === false
+        ? t("adblock.peekOffOverride")
+        : globalOn
+          ? t("adblock.peekOnDefault")
+          : t("adblock.peekOffDefault");
+
+  return (
+    <PropertyRow id="adblock" label={t("adblock.label")}>
+      {(labelId) => (
+        <Link labelId={labelId} id={profile.id} tab="basics" empty={!effectiveOn}>
+          {effectiveOn ? (
+            <AdBlockOnIcon className="size-3.5 shrink-0 text-primary-base" />
+          ) : (
+            <AdBlockOffIcon className="size-3.5 shrink-0 text-icon-soft-400" />
+          )}
+          <span data-peek-adblock={effectiveOn ? "on" : "off"} className="truncate">
+            {text}
+          </span>
         </Link>
       )}
     </PropertyRow>

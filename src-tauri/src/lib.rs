@@ -1,5 +1,6 @@
 // ShardBrowser Launcher — Tauri backend.
 
+mod adblock;
 mod profile_icon;
 mod shortcut;
 mod brand_engine;

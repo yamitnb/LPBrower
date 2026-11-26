@@ -241,6 +241,7 @@ pub(in crate::space) fn restore(id: &str) -> Result<profile::ProfileMeta> {
         extensions: stored.meta.extensions.clone(),
         mobile: profile::claims_mobile(&stored.config),
         android_media: false,
+        adblock: stored.meta.adblock,
         origin: profile::Origin::Personal,
         rights: None,
         open_on: None,

@@ -1,4 +1,5 @@
 import {
+  AdBlockToggleButton,
   ProfilesMoreMenu,
   NewProfileButton,
   ProfileFilterBar,
@@ -18,6 +19,7 @@ export function ProfileToolbar({ empty = false }: { empty?: boolean }) {
           <ProfileDisplayMenu />
         </div>
       )}
+      <AdBlockToggleButton />
       <ProfilesMoreMenu />
       <NewProfileButton />
     </div>

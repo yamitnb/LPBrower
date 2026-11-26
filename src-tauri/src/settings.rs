@@ -33,6 +33,9 @@ pub struct Settings {
     /// Offer password protection for profiles (#127). Off by default.
     #[serde(default)]
     pub profile_passwords: bool,
+    /// Block ads, banners, pop-ups and trackers via LPBrowser's built-in MV3 ad blocker.
+    #[serde(default)]
+    pub adblock_enabled: bool,
     /// Field kinds the helper reacts to, as the engine names them. Empty = all.
     #[serde(default)]
     pub helper_triggers: Vec<String>,
@@ -115,6 +118,7 @@ fn defaults() -> Settings {
         camera_enabled: default_true(),
         show_profile_name: default_true(),
         profile_passwords: false,
+        adblock_enabled: false,
         helper_triggers: Vec::new(),
         minimize_to_tray: default_minimize_to_tray(),
         extra_args: String::new(),

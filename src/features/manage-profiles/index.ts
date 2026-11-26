@@ -13,5 +13,6 @@ export { ExtensionPicker } from "./ui/ExtensionPicker";
 export { ProfileFilterBar } from "./ui/ProfileFilterBar";
 export { ProfileFilterChips } from "./ui/ProfileFilterChips";
 export { SaveAsViewButton } from "./ui/SaveAsViewButton";
+export { AdBlockToggleButton } from "./ui/AdBlockToggleButton";
 export { useProfileFilterChips, useProfileFilterFields } from "./lib/filterFields";
 export { ProfileDisplayMenu } from "./ui/ProfileDisplayMenu";

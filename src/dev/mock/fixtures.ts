@@ -39,9 +39,11 @@ export type StoredProfile = {
     launches?: number;
     traffic_bytes?: number;
     color?: string;
+    taskbar_title?: string;
     gpu_preset_id: string;
     extensions: string[];
     android_media?: boolean;
+    adblock?: boolean;
     /** A password seals it (#127): what unlocks it, never the password itself. */
     lock?: MockLock;
   };
@@ -319,8 +321,10 @@ function metaOpen(p: StoredProfile, ua: string, sync: ProfileSync | undefined): 
     ...(p._meta.launches !== undefined ? { launches: p._meta.launches } : {}),
     ...(p._meta.traffic_bytes !== undefined ? { traffic_bytes: p._meta.traffic_bytes } : {}),
     color: p._meta.color ?? null,
+    ...(p._meta.taskbar_title ? { taskbar_title: p._meta.taskbar_title } : {}),
     extensions: p._meta.extensions,
     mobile: /android/i.test(ua),
+    ...(p._meta.adblock !== undefined ? { adblock: p._meta.adblock } : {}),
     ...(sync ? { sync } : {}),
   };
 }
@@ -702,6 +706,7 @@ export function seed(): MockState {
       show_profile_name: true,
       // `window.__shardxMockProfilePasswords = true`, set before load: the switch is on (#127).
       profile_passwords: !!(window as { __shardxMockProfilePasswords?: boolean }).__shardxMockProfilePasswords,
+      adblock_enabled: false,
       minimize_to_tray: false,
       extra_args: "",
       ext_update_check: true,

@@ -76,7 +76,14 @@ export function ViewBar() {
   const saveNew = () => setViewDialog({ mode: "save" });
   const keep = view.builtin
     ? { label: t("viewBar.saveAs"), icon: <AddIcon className="size-3.5" />, onClick: saveNew }
-    : { label: t("viewBar.update"), icon: <SaveIcon className="size-3.5" />, onClick: () => update(view.id, currentQuery()) };
+    : {
+        label: t("viewBar.update"),
+        icon: <SaveIcon className="size-3.5" />,
+        onClick: () => {
+          update(view.id, currentQuery());
+          toast.saved(t("viewDialog.saved", { name: view.name }));
+        },
+      };
   // A custom View's change can go to a new View and leave this one as it was.
   const copy = view.builtin ? null : { label: t("viewBar.saveCopy"), icon: <CopyIcon className="size-3.5" />, onClick: saveNew };
   return (
